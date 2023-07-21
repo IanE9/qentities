@@ -1,0 +1,7 @@
+[package]
+name = "qentities"
+version = "0.1.0-alpha"
+edition = "2021"
+description = "Implementation of the Quake entities format."
+repository = "https://github.com/IanE9/qentities"
+keywords = ["parser"]
