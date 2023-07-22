@@ -60,6 +60,13 @@ impl<'a> DoubleEndedIterator for QEntityKeyValuesIter<'a> {
             .next_back()
             .map(|kv_info| self.entities.kv_ref(kv_info))
     }
+
+    #[inline]
+    fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
+        self.inner_iter
+            .nth_back(n)
+            .map(|kv_info| self.entities.kv_ref(kv_info))
+    }
 }
 
 impl ExactSizeIterator for QEntityKeyValuesIter<'_> {
