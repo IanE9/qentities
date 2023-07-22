@@ -8,7 +8,7 @@ use core::slice;
 pub struct QEntitiesIter<'a> {
     /// The collection of Quake entities being iterated.
     pub(super) entities: &'a QEntities,
-    /// The inner iterator for entity infos describing the entities that are iterated.
+    /// The inner iterator for entity infos describing the entities.
     pub(super) inner_iter: slice::Iter<'a, QEntityInfo>,
 }
 

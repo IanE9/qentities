@@ -50,7 +50,7 @@ impl QEntities {
     /// Creates a new reference to an entity within the collection.
     ///
     /// # Panics
-    /// This correct operation of this function is dependent upon the passed in entity info
+    /// The correct operation of this function is dependent upon the passed in entity info
     /// describing an entity that is valid for `self`. As such this function expects that the passed
     /// in entity info reference be a child of `self`.
     ///
@@ -75,7 +75,7 @@ impl QEntities {
     /// Creates a new reference to a key-value within the collection.
     ///
     /// # Panics
-    /// This correct operation of this function is dependent upon the passed in key-value info
+    /// The correct operation of this function is dependent upon the passed in key-value info
     /// describing a key-value that is valid for `self`. As such this function expects that the
     /// passed in entity info reference be a child of `self`.
     ///
@@ -100,7 +100,7 @@ impl QEntities {
     /// Creates a new reference to a byte-chunk within the collection.
     ///
     /// # Panics
-    /// This correct operation of this function is dependent upon the passed in byte-chunk info
+    /// The correct operation of this function is dependent upon the passed in byte-chunk info
     /// describing a byte-chunk that is valid for `self`. As such this function expects that the
     /// passed in byte-chunk info reference be a child of `self`.
     ///
