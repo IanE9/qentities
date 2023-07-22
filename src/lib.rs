@@ -11,10 +11,10 @@ pub use entity_kvs_iter::QEntityKeyValuesIter;
 /// Information describing an entity instance within a [collection of Quake entities](QEntities).
 #[derive(Debug, Clone, Copy)]
 struct QEntityInfo {
-    /// Index of the first key-value for the entity within the parent
+    /// Index of the entity's first key-value.
     /// [collection of Quake entities](QEntities).
     first_kv: usize,
-    /// Index of the last key-value for the entity within the parent
+    /// Index of the entity's last key-value.
     /// [collection of Quake entities](QEntities).
     last_kv: usize,
 }
@@ -40,10 +40,10 @@ struct QEntitiesByteChunkInfo {
 /// Collection of Quake entities.
 #[derive(Debug)]
 pub struct QEntities {
-    bytes: Box<[u8]>,
     entities: Box<[QEntityInfo]>,
     key_values: Box<[QEntityKeyValueInfo]>,
     byte_chunks: Box<[QEntitiesByteChunkInfo]>,
+    bytes: Box<[u8]>,
 }
 
 impl QEntities {
