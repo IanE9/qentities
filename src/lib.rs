@@ -20,9 +20,9 @@ struct QEntityInfo {
 /// Information describing a key-value instance within a [collection of Quake entities](QEntities).
 #[derive(Debug, Clone, Copy)]
 struct QEntityKeyValueInfo {
-    /// Index of the bytes chunk for the key.
+    /// Index of the byte-chunk for the key.
     key_chunk: usize,
-    /// Index of the bytes chunk for the value.
+    /// Index of the byte-chunk for the value.
     value_chunk: usize,
 }
 
