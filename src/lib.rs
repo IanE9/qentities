@@ -75,7 +75,7 @@ impl QEntities {
     /// # Panics
     /// The correct operation of this function is dependent upon the passed in key-value info
     /// describing a key-value that is valid for `self`. As such this function expects that the
-    /// passed in entity info reference be a child of `self`.
+    /// passed in key-value info reference be a child of `self`.
     ///
     /// In debug builds this function explicitly panics when this condition is violated. In release
     /// builds this function will only panic if the passed in key-value info happens to be invalid
