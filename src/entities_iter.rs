@@ -19,7 +19,7 @@ impl<'a> Iterator for QEntitiesIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         self.inner_iter
             .next()
-            .map(|entity_info| self.entities.entity_ref(entity_info))
+            .map(self.entities.entity_ref_inator())
     }
 
     #[inline(always)]
@@ -42,14 +42,14 @@ impl<'a> Iterator for QEntitiesIter<'a> {
     {
         self.inner_iter
             .last()
-            .map(|entity_info| self.entities.entity_ref(entity_info))
+            .map(self.entities.entity_ref_inator())
     }
 
     #[inline]
     fn nth(&mut self, n: usize) -> Option<Self::Item> {
         self.inner_iter
             .nth(n)
-            .map(|entity_info| self.entities.entity_ref(entity_info))
+            .map(self.entities.entity_ref_inator())
     }
 }
 
@@ -58,14 +58,14 @@ impl<'a> DoubleEndedIterator for QEntitiesIter<'a> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.inner_iter
             .next_back()
-            .map(|entity_info| self.entities.entity_ref(entity_info))
+            .map(self.entities.entity_ref_inator())
     }
 
     #[inline]
     fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
         self.inner_iter
             .nth_back(n)
-            .map(|entity_info| self.entities.entity_ref(entity_info))
+            .map(self.entities.entity_ref_inator())
     }
 }
 

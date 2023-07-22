@@ -17,9 +17,7 @@ impl<'a> Iterator for QEntityKeyValuesIter<'a> {
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner_iter
-            .next()
-            .map(|kv_info| self.entities.kv_ref(kv_info))
+        self.inner_iter.next().map(self.entities.kv_ref_inator())
     }
 
     #[inline(always)]
@@ -40,16 +38,12 @@ impl<'a> Iterator for QEntityKeyValuesIter<'a> {
     where
         Self: Sized,
     {
-        self.inner_iter
-            .last()
-            .map(|kv_info| self.entities.kv_ref(kv_info))
+        self.inner_iter.last().map(self.entities.kv_ref_inator())
     }
 
     #[inline]
     fn nth(&mut self, n: usize) -> Option<Self::Item> {
-        self.inner_iter
-            .nth(n)
-            .map(|kv_info| self.entities.kv_ref(kv_info))
+        self.inner_iter.nth(n).map(self.entities.kv_ref_inator())
     }
 }
 
@@ -58,14 +52,14 @@ impl<'a> DoubleEndedIterator for QEntityKeyValuesIter<'a> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.inner_iter
             .next_back()
-            .map(|kv_info| self.entities.kv_ref(kv_info))
+            .map(self.entities.kv_ref_inator())
     }
 
     #[inline]
     fn nth_back(&mut self, n: usize) -> Option<Self::Item> {
         self.inner_iter
             .nth_back(n)
-            .map(|kv_info| self.entities.kv_ref(kv_info))
+            .map(self.entities.kv_ref_inator())
     }
 }
 

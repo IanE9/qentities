@@ -53,8 +53,8 @@ impl QEntities {
     /// in entity info reference be a child of `self`.
     ///
     /// In debug builds this function explicitly panics when this condition is violated. In release
-    /// builds this function will only panic if the passed in entity info happens to be invalid for
-    /// `self`.
+    /// builds this function will only panic if the passed in byte-chunk info happens to lead to an
+    /// invalid access.
     #[inline]
     fn entity_ref<'a>(&'a self, entity_info: &'a QEntityInfo) -> QEntityRef<'a> {
         debug_assert!(
@@ -70,6 +70,17 @@ impl QEntities {
         }
     }
 
+    /// Returns a closure that can be used to invoke [`entity_ref()`](Self::entity_ref) on `self`.
+    ///
+    /// # Panics
+    /// The returned closure may panic when called under all the same circumstances that
+    /// [`entity_ref()`](Self::entity_ref) may.
+    #[inline]
+    fn entity_ref_inator<'a>(&'a self) -> impl Fn(&'a QEntityInfo) -> QEntityRef<'a> {
+        #[inline]
+        |entity_info| self.entity_ref(entity_info)
+    }
+
     /// Creates a new reference to a key-value within the collection.
     ///
     /// # Panics
@@ -78,8 +89,8 @@ impl QEntities {
     /// passed in key-value info reference be a child of `self`.
     ///
     /// In debug builds this function explicitly panics when this condition is violated. In release
-    /// builds this function will only panic if the passed in key-value info happens to be invalid
-    /// for `self`.
+    /// builds this function will only panic if the passed in byte-chunk info happens to lead to an
+    /// invalid access.
     #[inline]
     fn kv_ref<'a>(&'a self, kv_info: &'a QEntityKeyValueInfo) -> QEntityKeyValueRef<'a> {
         debug_assert!(
@@ -95,6 +106,17 @@ impl QEntities {
         }
     }
 
+    /// Returns a closure that can be used to invoke [`kv_ref()`](Self::kv_ref) on `self`.
+    ///
+    /// # Panics
+    /// The returned closure may panic when called under all the same circumstances that
+    /// [`kv_ref()`](Self::kv_ref) may.
+    #[inline]
+    fn kv_ref_inator<'a>(&'a self) -> impl Fn(&'a QEntityKeyValueInfo) -> QEntityKeyValueRef<'a> {
+        #[inline]
+        |kv_info| self.kv_ref(kv_info)
+    }
+
     /// Creates a new reference to a byte-chunk within the collection.
     ///
     /// # Panics
@@ -103,8 +125,8 @@ impl QEntities {
     /// passed in byte-chunk info reference be a child of `self`.
     ///
     /// In debug builds this function explicitly panics when this condition is violated. In release
-    /// builds this function will only panic if the passed in byte-chunk info happens to be invalid
-    /// for `self`.
+    /// builds this function will only panic if the passed in byte-chunk info happens to lead to an
+    /// invalid access.
     #[inline]
     fn byte_chunk_ref<'a>(&'a self, byte_chunk_info: &'a QEntitiesByteChunkInfo) -> &'a [u8] {
         debug_assert!(
