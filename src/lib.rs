@@ -12,10 +12,8 @@ pub use entity_kvs_iter::QEntityKeyValuesIter;
 #[derive(Debug, Clone, Copy)]
 struct QEntityInfo {
     /// Index of the entity's first key-value.
-    /// [collection of Quake entities](QEntities).
     first_kv: usize,
     /// Index of the entity's last key-value.
-    /// [collection of Quake entities](QEntities).
     last_kv: usize,
 }
 
