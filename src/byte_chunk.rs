@@ -263,51 +263,51 @@ mod tests {
         chunk: Option<usize>,
     }
 
+    impl ByteChunkConsistifier {
+        fn new(bytes: &'static [u8]) -> Self {
+            Self { bytes, chunk: None }
+        }
+
+        fn insert_into<S: BuildHasher>(&mut self, builder: &mut ByteChunksBuilder<S>) {
+            let chunk = builder.get_or_insert(self.bytes);
+            if let Some(expected_chunk) = self.chunk {
+                assert_eq!(expected_chunk, chunk);
+            } else {
+                self.chunk = Some(chunk);
+            }
+        }
+
+        fn finalize_many<const N: usize>(many: [Self; N], byte_chunks: &ByteChunks) {
+            let mut total_length = 0usize;
+            for one in many {
+                total_length += one.bytes.len();
+                one.finalize(byte_chunks);
+            }
+
+            // Assuming that the byte-chunks builder interned the bytes correctly, the total
+            // length of the byte-chunks should never exceed the total length of the inputs.
+            assert!(total_length <= byte_chunks.bytes.len());
+        }
+
+        fn finalize(self, byte_chunks: &ByteChunks) {
+            let this = core::mem::ManuallyDrop::new(self);
+            let chunk = this.chunk.expect("consistifier is used at least once");
+            assert_eq!(this.bytes, &byte_chunks[chunk]);
+        }
+    }
+
+    impl Drop for ByteChunkConsistifier {
+        fn drop(&mut self) {
+            panic!("consistifier must be consumed with finalize")
+        }
+    }
+
     #[test]
     fn byte_chunk_building() {
         use core::hash::{BuildHasher, BuildHasherDefault};
 
         fn test_with_hasher<S: BuildHasher>(hasher: S) {
             let mut builder = ByteChunksBuilder::with_hasher(hasher);
-
-            impl ByteChunkConsistifier {
-                fn new(bytes: &'static [u8]) -> Self {
-                    Self { bytes, chunk: None }
-                }
-
-                fn insert_into<S: BuildHasher>(&mut self, builder: &mut ByteChunksBuilder<S>) {
-                    let chunk = builder.get_or_insert(self.bytes);
-                    if let Some(expected_chunk) = self.chunk {
-                        assert_eq!(expected_chunk, chunk);
-                    } else {
-                        self.chunk = Some(chunk);
-                    }
-                }
-
-                fn finalize_many<const N: usize>(many: [Self; N], byte_chunks: &ByteChunks) {
-                    let mut total_length = 0usize;
-                    for one in many {
-                        total_length += one.bytes.len();
-                        one.finalize(byte_chunks);
-                    }
-
-                    // Assuming that the byte-chunks builder interned the bytes correctly, the total
-                    // length of the byte-chunks should never exceed the total length of the inputs.
-                    assert!(total_length <= byte_chunks.bytes.len());
-                }
-
-                fn finalize(self, byte_chunks: &ByteChunks) {
-                    let this = core::mem::ManuallyDrop::new(self);
-                    let chunk = this.chunk.expect("consistifier is used at least once");
-                    assert_eq!(this.bytes, &byte_chunks[chunk]);
-                }
-            }
-
-            impl Drop for ByteChunkConsistifier {
-                fn drop(&mut self) {
-                    panic!("consistifier must be consumed with finalize")
-                }
-            }
 
             let mut classname_consistifier = ByteChunkConsistifier::new(b"classname");
             let mut worldspawn_consistifier = ByteChunkConsistifier::new(b"worldspawn");
