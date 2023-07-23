@@ -304,8 +304,6 @@ mod tests {
 
     #[test]
     fn byte_chunk_building() {
-        use core::hash::{BuildHasher, BuildHasherDefault};
-
         fn test_with_hasher<S: BuildHasher>(hasher: S) {
             let mut builder = ByteChunksBuilder::with_hasher(hasher);
 
@@ -350,6 +348,6 @@ mod tests {
         }
 
         test_with_hasher(hashbrown::hash_map::DefaultHashBuilder::default());
-        test_with_hasher(BuildHasherDefault::<rustc_hash::FxHasher>::default());
+        test_with_hasher(core::hash::BuildHasherDefault::<rustc_hash::FxHasher>::default());
     }
 }
