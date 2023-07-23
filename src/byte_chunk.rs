@@ -284,7 +284,7 @@ mod tests {
                 one.finalize(byte_chunks);
             }
 
-            // Assuming that the byte-chunks builder interned the bytes correctly, the total
+            // Assuming that the byte-chunks builder de-duplicated the bytes correctly, the total
             // length of the byte-chunks should never exceed the total length of the inputs.
             assert!(total_length <= byte_chunks.bytes.len());
         }
