@@ -44,18 +44,12 @@ impl<'a> Iterator for QEntityKeyValuesIter<'a> {
     }
 
     #[inline(always)]
-    fn count(self) -> usize
-    where
-        Self: Sized,
-    {
+    fn count(self) -> usize {
         self.inner_iter.count()
     }
 
     #[inline]
-    fn last(self) -> Option<Self::Item>
-    where
-        Self: Sized,
-    {
+    fn last(self) -> Option<Self::Item> {
         self.inner_iter.last().map(self.entities.kv_ref_inator())
     }
 
