@@ -320,13 +320,13 @@ mod tests {
             // Repeat simulation four times to ensure that all consistifiers perform multiple
             // insertions.
             for _ in 0..4 {
-                // Simulate the worldspawn entity being interned.
+                // Simulate the worldspawn entity being inserted.
                 classname_consistifier.insert_into(&mut builder);
                 worldspawn_consistifier.insert_into(&mut builder);
                 wad_consistifier.insert_into(&mut builder);
                 my_wad_consistifier.insert_into(&mut builder);
 
-                // Simulate four lights being interned.
+                // Simulate four lights being inserted.
                 for _ in 0..4 {
                     classname_consistifier.insert_into(&mut builder);
                     light_consistifier.insert_into(&mut builder);
