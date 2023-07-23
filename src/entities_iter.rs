@@ -1,15 +1,26 @@
-//! Module containing the implementation for an iterator over the entities within a
-//! [collection of Quake entities](QEntities).
+//! Module containing the implementation for an iterator over the entities within a [`QEntities`]
+//! collection.
 
 use super::{QEntities, QEntityInfo, QEntityRef};
 use core::slice;
 
-/// Iterator over the entities within a [collection of Quake entities](QEntities).
+/// Iterator over the entities within a [`QEntities`] collection.
 pub struct QEntitiesIter<'a> {
     /// The collection of Quake entities being iterated.
-    pub(super) entities: &'a QEntities,
+    entities: &'a QEntities,
     /// The inner iterator for entity infos describing the entities.
-    pub(super) inner_iter: slice::Iter<'a, QEntityInfo>,
+    inner_iter: slice::Iter<'a, QEntityInfo>,
+}
+
+impl<'a> QEntitiesIter<'a> {
+    /// Creates a new iterator over the entities of a [`QEntities`] collection.
+    #[inline]
+    pub(super) fn new(entities: &'a QEntities) -> Self {
+        Self {
+            entities,
+            inner_iter: entities.entities.iter(),
+        }
+    }
 }
 
 impl<'a> Iterator for QEntitiesIter<'a> {

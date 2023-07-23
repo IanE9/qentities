@@ -6,5 +6,15 @@ description = "Implementation of the Quake entities format."
 repository = "https://github.com/IanE9/qentities"
 keywords = ["parser"]
 
+[dependencies.bstr]
+version = "1.6.0"
+
+[dependencies.hashbrown]
+version = "0.14.0"
+features = ["raw"]
+
 [dependencies.memchr]
 version = "2.5.0"
+
+[dependencies.rustc-hash]
+version = "1.1.0"

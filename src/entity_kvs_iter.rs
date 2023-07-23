@@ -1,15 +1,33 @@
 //! Module containing the implementation for an iterator over the key-values of an entity within a
-//! [collection of Quake entities](QEntities).
+//! [`QEntities`] collection.
 
-use super::{QEntities, QEntityKeyValueInfo, QEntityKeyValueRef};
+use super::{QEntities, QEntityInfo, QEntityKeyValueInfo, QEntityKeyValueRef};
 use core::slice;
 
-/// Iterator over the key-values of an entity within a [collection of Quake entities](QEntities).
+/// Iterator over the key-values of an entity within a [`QEntities`] collection.
 pub struct QEntityKeyValuesIter<'a> {
     /// The collection of Quake entities that contains the entity whose key-values are iterated.
-    pub(super) entities: &'a QEntities,
+    entities: &'a QEntities,
     /// The inner iterator for entity key-value infos describing the entity key-values.
-    pub(super) inner_iter: slice::Iter<'a, QEntityKeyValueInfo>,
+    inner_iter: slice::Iter<'a, QEntityKeyValueInfo>,
+}
+
+impl<'a> QEntityKeyValuesIter<'a> {
+    /// Creates a new iterator over the key-values of an entity.
+    ///
+    /// # Panics
+    /// This function will panic if the provided [`QEntityInfo`] describes an entity that is not
+    /// valid for the provided [`QEntities`] collection.
+    #[inline]
+    pub(super) fn new(entities: &'a QEntities, entity_info: &'a QEntityInfo) -> Self {
+        let first_kv = entity_info.first_kv;
+        let last_kv = first_kv + entity_info.kvs_length;
+        let kvs_slice = &entities.key_values[first_kv..last_kv];
+        QEntityKeyValuesIter {
+            entities,
+            inner_iter: kvs_slice.iter(),
+        }
+    }
 }
 
 impl<'a> Iterator for QEntityKeyValuesIter<'a> {

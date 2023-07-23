@@ -2,22 +2,26 @@
 
 #![warn(missing_docs)]
 
+mod byte_chunk;
 mod entities_iter;
+mod entities_parse;
 mod entity_kvs_iter;
 
 pub use entities_iter::QEntitiesIter;
 pub use entity_kvs_iter::QEntityKeyValuesIter;
 
-/// Information describing an entity instance within a [collection of Quake entities](QEntities).
+use byte_chunk::ByteChunks;
+
+/// Information describing an entity instance within a [`QEntities`] collection.
 #[derive(Debug, Clone, Copy)]
 struct QEntityInfo {
     /// Index of the entity's first key-value.
     first_kv: usize,
-    /// Index of the entity's last key-value.
-    last_kv: usize,
+    /// The number of key-values the entity has.
+    kvs_length: usize,
 }
 
-/// Information describing a key-value instance within a [collection of Quake entities](QEntities).
+/// Information describing a key-value instance within a [`QEntities`] collection.
 #[derive(Debug, Clone, Copy)]
 struct QEntityKeyValueInfo {
     /// Index of the byte-chunk for the key.
@@ -26,22 +30,12 @@ struct QEntityKeyValueInfo {
     value_chunk: usize,
 }
 
-/// Information describing a chunk of bytes within a [collection of Quake entities](QEntities).
-#[derive(Debug, Clone, Copy)]
-struct QEntitiesByteChunkInfo {
-    /// Offset to the first byte of the chunk.
-    offset: usize,
-    /// The length of the byte-chunk.
-    length: usize,
-}
-
 /// Collection of Quake entities.
 #[derive(Debug)]
 pub struct QEntities {
     entities: Box<[QEntityInfo]>,
     key_values: Box<[QEntityKeyValueInfo]>,
-    byte_chunks: Box<[QEntitiesByteChunkInfo]>,
-    bytes: Box<[u8]>,
+    byte_chunks: ByteChunks,
 }
 
 impl QEntities {
@@ -53,8 +47,9 @@ impl QEntities {
     /// in entity info reference be a child of `self`.
     ///
     /// In debug builds this function explicitly panics when this condition is violated. In release
-    /// builds this function will only panic if the passed in byte-chunk info happens to lead to an
-    /// invalid access.
+    /// builds this function on its own is incapable of panicking, but if the aforementioned
+    /// condition has been violated, then it is possible for the returned reference to be used in
+    /// such a manner that the program will subsequently panic.
     #[inline]
     fn entity_ref<'a>(&'a self, entity_info: &'a QEntityInfo) -> QEntityRef<'a> {
         debug_assert!(
@@ -73,8 +68,8 @@ impl QEntities {
     /// Returns a closure that can be used to invoke [`entity_ref()`](Self::entity_ref) on `self`.
     ///
     /// # Panics
-    /// The returned closure may panic when called under all the same circumstances that
-    /// [`entity_ref()`](Self::entity_ref) may.
+    /// Invocation of the returned closure may lead to panicking under all the same circumstances
+    /// that [`entity_ref()`](Self::entity_ref) may.
     #[inline]
     fn entity_ref_inator<'a>(&'a self) -> impl Fn(&'a QEntityInfo) -> QEntityRef<'a> {
         #[inline]
@@ -89,8 +84,9 @@ impl QEntities {
     /// passed in key-value info reference be a child of `self`.
     ///
     /// In debug builds this function explicitly panics when this condition is violated. In release
-    /// builds this function will only panic if the passed in byte-chunk info happens to lead to an
-    /// invalid access.
+    /// builds this function on its own is incapable of panicking, but if the aforementioned
+    /// condition has been violated, then it is possible for the returned reference to be used in
+    /// such a manner that the program will subsequently panic.
     #[inline]
     fn kv_ref<'a>(&'a self, kv_info: &'a QEntityKeyValueInfo) -> QEntityKeyValueRef<'a> {
         debug_assert!(
@@ -109,45 +105,18 @@ impl QEntities {
     /// Returns a closure that can be used to invoke [`kv_ref()`](Self::kv_ref) on `self`.
     ///
     /// # Panics
-    /// The returned closure may panic when called under all the same circumstances that
-    /// [`kv_ref()`](Self::kv_ref) may.
+    /// Invocation of the returned closure may lead to panicking under all the same circumstances
+    /// that [`kv_ref()`](Self::kv_ref) may.
     #[inline]
     fn kv_ref_inator<'a>(&'a self) -> impl Fn(&'a QEntityKeyValueInfo) -> QEntityKeyValueRef<'a> {
         #[inline]
         |kv_info| self.kv_ref(kv_info)
     }
 
-    /// Creates a new reference to a byte-chunk within the collection.
-    ///
-    /// # Panics
-    /// The correct operation of this function is dependent upon the passed in byte-chunk info
-    /// describing a byte-chunk that is valid for `self`. As such this function expects that the
-    /// passed in byte-chunk info reference be a child of `self`.
-    ///
-    /// In debug builds this function explicitly panics when this condition is violated. In release
-    /// builds this function will only panic if the passed in byte-chunk info happens to lead to an
-    /// invalid access.
-    #[inline]
-    fn byte_chunk_ref<'a>(&'a self, byte_chunk_info: &'a QEntitiesByteChunkInfo) -> &'a [u8] {
-        debug_assert!(
-            self.byte_chunks
-                .as_ptr_range()
-                .contains(&(byte_chunk_info as *const _)),
-            "byte-chunk references must be constructed from byte-chunk infos contained within self",
-        );
-
-        let start = byte_chunk_info.offset;
-        let end = start + byte_chunk_info.length;
-        &self.bytes[start..end]
-    }
-
-    /// Creates an iterator that returns [references to the entities](QEntityRef) of the collection.
+    /// Creates an iterator that yields [`QEntityRef`]s for the entities of the collection.
     #[inline]
     pub fn iter(&self) -> QEntitiesIter {
-        QEntitiesIter {
-            entities: self,
-            inner_iter: self.entities.iter(),
-        }
+        QEntitiesIter::new(self)
     }
 }
 
@@ -161,7 +130,7 @@ impl<'a> IntoIterator for &'a QEntities {
     }
 }
 
-/// Reference to an entity within a [collection of Quake entities](QEntities).
+/// Reference to an entity within a [`QEntities`] collection.
 #[derive(Debug, Clone, Copy)]
 pub struct QEntityRef<'a> {
     /// The collection of Quake entities in which the entity resides.
@@ -171,16 +140,10 @@ pub struct QEntityRef<'a> {
 }
 
 impl<'a> QEntityRef<'a> {
-    /// Creates an iterator that returns [references to the key-values](QEntityKeyValueRef) of the
-    /// entity.
+    /// Creates an iterator that yields [`QEntityKeyValueRef`]s for the key-values of the entity.
     #[inline]
     pub fn iter(&self) -> QEntityKeyValuesIter<'a> {
-        let kvs_slice =
-            &self.entities.key_values[self.entity_info.first_kv..self.entity_info.last_kv];
-        QEntityKeyValuesIter {
-            entities: self.entities,
-            inner_iter: kvs_slice.iter(),
-        }
+        QEntityKeyValuesIter::new(self.entities, self.entity_info)
     }
 }
 
@@ -194,7 +157,7 @@ impl<'a> IntoIterator for QEntityRef<'a> {
     }
 }
 
-/// Reference to a key-value within a [collection of Quake entities](QEntities).
+/// Reference to a key-value within a [`QEntities`] collection.
 #[derive(Debug, Clone, Copy)]
 pub struct QEntityKeyValueRef<'a> {
     /// The collection of Quake entities in which the key-value resides.
@@ -207,14 +170,12 @@ impl<'a> QEntityKeyValueRef<'a> {
     /// Retrieves a reference to the bytes of the key.
     #[inline]
     pub fn key(&self) -> &'a [u8] {
-        self.entities
-            .byte_chunk_ref(&self.entities.byte_chunks[self.kv_info.key_chunk])
+        &self.entities.byte_chunks[self.kv_info.key_chunk]
     }
 
     /// Retrieves a reference to the bytes of the value.
     #[inline]
     pub fn value(&self) -> &'a [u8] {
-        self.entities
-            .byte_chunk_ref(&self.entities.byte_chunks[self.kv_info.value_chunk])
+        &self.entities.byte_chunks[self.kv_info.value_chunk]
     }
 }
