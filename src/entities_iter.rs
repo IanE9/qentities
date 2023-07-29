@@ -6,7 +6,7 @@ use core::slice;
 
 /// Iterator over the entities within a [`QEntities`] collection.
 pub struct QEntitiesIter<'a> {
-    /// The collection of Quake entities being iterated.
+    /// The collection of q-entities being iterated.
     entities: &'a QEntities,
     /// The inner iterator for entity infos describing the entities.
     inner_iter: slice::Iter<'a, QEntityInfo>,

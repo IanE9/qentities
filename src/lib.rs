@@ -1,16 +1,17 @@
-//! Implementation of the Quake entities format.
+//! Implementation of the q-entities format.
 
 #![warn(missing_docs)]
 
+mod build;
 mod byte_chunk;
-mod entities_iter;
-mod entities_parse;
-mod entity_kvs_iter;
-
-pub use entities_iter::QEntitiesIter;
-pub use entity_kvs_iter::QEntityKeyValuesIter;
+pub mod entities_iter;
+pub mod entity_kvs_iter;
+pub mod parse;
 
 use byte_chunk::ByteChunks;
+use core::fmt;
+use entities_iter::QEntitiesIter;
+use entity_kvs_iter::QEntityKeyValuesIter;
 
 /// Information describing an entity instance within a [`QEntities`] collection.
 #[derive(Debug, Clone, Copy)]
@@ -30,12 +31,17 @@ struct QEntityKeyValueInfo {
     value_chunk: usize,
 }
 
-/// Collection of Quake entities.
-#[derive(Debug)]
+/// Collection of q-entities.
 pub struct QEntities {
     entities: Box<[QEntityInfo]>,
     key_values: Box<[QEntityKeyValueInfo]>,
     byte_chunks: ByteChunks,
+}
+
+impl fmt::Debug for QEntities {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
+    }
 }
 
 impl QEntities {
@@ -131,12 +137,18 @@ impl<'a> IntoIterator for &'a QEntities {
 }
 
 /// Reference to an entity within a [`QEntities`] collection.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct QEntityRef<'a> {
-    /// The collection of Quake entities in which the entity resides.
+    /// The collection of q-entities in which the entity resides.
     entities: &'a QEntities,
     /// Information about the referenced entity.
     entity_info: &'a QEntityInfo,
+}
+
+impl fmt::Debug for QEntityRef<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_list().entries(self.iter()).finish()
+    }
 }
 
 impl<'a> QEntityRef<'a> {
@@ -158,12 +170,24 @@ impl<'a> IntoIterator for QEntityRef<'a> {
 }
 
 /// Reference to a key-value within a [`QEntities`] collection.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct QEntityKeyValueRef<'a> {
-    /// The collection of Quake entities in which the key-value resides.
+    /// The collection of q-entities in which the key-value resides.
     entities: &'a QEntities,
     /// Information about the referenced key-value.
     kv_info: &'a QEntityKeyValueInfo,
+}
+
+impl fmt::Debug for QEntityKeyValueRef<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use bstr::BStr;
+        write!(
+            f,
+            "({:?} {:?})",
+            BStr::new(self.key()),
+            BStr::new(self.value()),
+        )
+    }
 }
 
 impl<'a> QEntityKeyValueRef<'a> {

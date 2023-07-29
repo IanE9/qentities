@@ -62,6 +62,7 @@ impl<S: fmt::Debug> fmt::Debug for ByteChunksBuilder<S> {
 
 impl<S> ByteChunksBuilder<S> {
     /// Creates a new builder using the given hasher.
+    #[inline]
     pub fn with_hasher(hash_builder: S) -> Self {
         Self {
             bytes: Vec::new(),
@@ -73,7 +74,7 @@ impl<S> ByteChunksBuilder<S> {
 
     /// Gets the index of the associated byte-chunk present in the builder. If there exists no
     /// associated byte-chunk, then a new one is inserted.
-    pub fn get_or_insert(&mut self, bytes: &[u8]) -> usize
+    pub fn chunk(&mut self, bytes: &[u8]) -> usize
     where
         S: BuildHasher,
     {
@@ -108,6 +109,27 @@ impl<S> ByteChunksBuilder<S> {
             }
         }
     }
+
+    /// Consume `self` and construct a new [`ByteChunks`] collection.
+    #[inline]
+    pub fn finish(self) -> ByteChunks {
+        ByteChunks {
+            bytes: self.bytes.into(),
+            chunks: self.chunks.into(),
+        }
+    }
+}
+
+impl<S: Default> Default for ByteChunksBuilder<S> {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            bytes: Vec::new(),
+            chunks: Vec::new(),
+            hash_builder: Default::default(),
+            hashes: HashMap::with_hasher(()),
+        }
+    }
 }
 
 /// Collection of byte-chunks.
@@ -126,11 +148,9 @@ impl fmt::Debug for ByteChunks {
 
 impl<S> From<ByteChunksBuilder<S>> for ByteChunks {
     /// Consume a [`ByteChunksBuilder`] and construct a new [`ByteChunks`] collection from it.
+    #[inline(always)]
     fn from(value: ByteChunksBuilder<S>) -> Self {
-        Self {
-            bytes: value.bytes.into_boxed_slice(),
-            chunks: value.chunks.into_boxed_slice(),
-        }
+        value.finish()
     }
 }
 
@@ -269,7 +289,7 @@ mod tests {
         }
 
         fn insert_into<S: BuildHasher>(&mut self, builder: &mut ByteChunksBuilder<S>) {
-            let chunk = builder.get_or_insert(self.bytes);
+            let chunk = builder.chunk(self.bytes);
             if let Some(expected_chunk) = self.chunk {
                 assert_eq!(expected_chunk, chunk);
             } else {
@@ -277,7 +297,7 @@ mod tests {
             }
         }
 
-        fn finalize_many<const N: usize>(many: [Self; N], byte_chunks: &ByteChunks) {
+        fn finalize_many(many: impl IntoIterator<Item = Self>, byte_chunks: &ByteChunks) {
             let mut total_length = 0usize;
             for one in many {
                 total_length += one.bytes.len();

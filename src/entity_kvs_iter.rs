@@ -6,7 +6,7 @@ use core::slice;
 
 /// Iterator over the key-values of an entity within a [`QEntities`] collection.
 pub struct QEntityKeyValuesIter<'a> {
-    /// The collection of Quake entities that contains the entity whose key-values are iterated.
+    /// The collection of q-entities that contains the entity whose key-values are iterated.
     entities: &'a QEntities,
     /// The inner iterator for entity key-value infos describing the entity key-values.
     inner_iter: slice::Iter<'a, QEntityKeyValueInfo>,
