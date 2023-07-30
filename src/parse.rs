@@ -1,8 +1,12 @@
 //! Module containing the types for parsing q-entities files.
 
+use super::byte_chunk::ByteChunksBuilder;
+use super::{QEntities, QEntityInfo, QEntityKeyValueInfo};
 use bitflags::bitflags;
 use core::fmt;
+use core::hash::BuildHasher;
 use core::slice;
+use hashbrown::hash_map::DefaultHashBuilder;
 
 use std::{error, io};
 
@@ -27,6 +31,43 @@ impl std::fmt::Display for QEntitiesParserLocation {
     }
 }
 
+/// An error describing an unexpected tokens within a q-entities file.
+#[derive(Debug)]
+pub struct QEntitiesUnexpectedTokenError {
+    /// The unexpected token's kind.
+    kind: QEntitiesTokenKind,
+    /// The location of the unexpected token.
+    location: QEntitiesParserLocation,
+}
+
+impl QEntitiesUnexpectedTokenError {
+    /// Creates a new unexpected token error.
+    #[inline]
+    fn new(kind: QEntitiesTokenKind, location: QEntitiesParserLocation) -> Self {
+        Self { kind, location }
+    }
+
+    /// Gets the location at which the unexpected token appeared.
+    #[inline]
+    pub fn location(&self) -> &QEntitiesParserLocation {
+        &self.location
+    }
+
+    /// Gets the kind of token that was encountered.
+    #[inline]
+    pub fn kind(&self) -> QEntitiesTokenKind {
+        self.kind
+    }
+}
+
+impl fmt::Display for QEntitiesUnexpectedTokenError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "unexpected \"{}\" token {}", self.kind, self.location)
+    }
+}
+
+impl error::Error for QEntitiesUnexpectedTokenError {}
+
 /// The internal error enumeration for errors that can occur while parsing a q-entities file.
 #[derive(Debug)]
 enum ParseError {
@@ -36,8 +77,26 @@ enum ParseError {
     UnterminatedCStyleComment(QEntitiesParserLocation),
     /// A quoted string was not terminated.
     UnterminatedQuotedString(QEntitiesParserLocation),
+    /// An entity was not terminated.
+    UnterminatedEntity(QEntitiesParserLocation),
     /// An escape sequence is invalid.
     InvalidEscapeSequence(QEntitiesParserLocation),
+    /// An unexpected token was encountered.
+    UnexpectedToken(QEntitiesUnexpectedTokenError),
+}
+
+impl From<io::Error> for ParseError {
+    #[inline]
+    fn from(value: io::Error) -> Self {
+        Self::Io(value)
+    }
+}
+
+impl From<QEntitiesUnexpectedTokenError> for ParseError {
+    #[inline]
+    fn from(value: QEntitiesUnexpectedTokenError) -> Self {
+        Self::UnexpectedToken(value)
+    }
 }
 
 /// An error that can occur during parsing of a q-entities file.
@@ -56,8 +115,12 @@ pub enum QEntitiesParseErrorKind {
     UnterminatedCStyleComment,
     /// A quoted string was not terminated.
     UnterminatedQuotedString,
+    /// An entity was not terminated.
+    UnterminatedEntity,
     /// An escape sequence is invalid.
     InvalidEscapeSequence,
+    /// An unexpected token was encountered.
+    UnexpectedToken,
 }
 
 impl QEntitiesParseError {
@@ -72,9 +135,11 @@ impl QEntitiesParseError {
             ParseError::UnterminatedQuotedString { .. } => {
                 QEntitiesParseErrorKind::UnterminatedQuotedString
             }
+            ParseError::UnterminatedEntity { .. } => QEntitiesParseErrorKind::UnterminatedEntity,
             ParseError::InvalidEscapeSequence { .. } => {
                 QEntitiesParseErrorKind::InvalidEscapeSequence
             }
+            ParseError::UnexpectedToken { .. } => QEntitiesParseErrorKind::UnexpectedToken,
         }
     }
 
@@ -83,9 +148,11 @@ impl QEntitiesParseError {
     pub fn location(&self) -> Option<&QEntitiesParserLocation> {
         match self.repr.as_ref() {
             ParseError::Io { .. } => None,
-            ParseError::UnterminatedCStyleComment(loc) => Some(loc),
-            ParseError::UnterminatedQuotedString(loc) => Some(loc),
-            ParseError::InvalidEscapeSequence(loc) => Some(loc),
+            ParseError::UnterminatedCStyleComment(location) => Some(location),
+            ParseError::UnterminatedQuotedString(location) => Some(location),
+            ParseError::UnterminatedEntity(location) => Some(location),
+            ParseError::InvalidEscapeSequence(location) => Some(location),
+            ParseError::UnexpectedToken(e) => Some(&e.location),
         }
     }
 }
@@ -94,15 +161,19 @@ impl fmt::Display for QEntitiesParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.repr.as_ref() {
             ParseError::Io(e) => write!(f, "io error: {e}"),
-            ParseError::UnterminatedCStyleComment(loc) => {
-                write!(f, "unterminated c style comment: {loc}")
+            ParseError::UnterminatedCStyleComment(location) => {
+                write!(f, "unterminated c style comment {location}")
             }
-            ParseError::UnterminatedQuotedString(loc) => {
-                write!(f, "unterminated quoted string: {loc}")
+            ParseError::UnterminatedQuotedString(location) => {
+                write!(f, "unterminated quoted string {location}")
             }
-            ParseError::InvalidEscapeSequence(loc) => {
-                write!(f, "invalid escape sequence: {loc}")
+            ParseError::UnterminatedEntity(location) => {
+                write!(f, "unterminated entity string {location}")
             }
+            ParseError::InvalidEscapeSequence(location) => {
+                write!(f, "invalid escape sequence {location}")
+            }
+            ParseError::UnexpectedToken(e) => e.fmt(f),
         }
     }
 }
@@ -113,7 +184,9 @@ impl error::Error for QEntitiesParseError {
             ParseError::Io(e) => Some(e),
             ParseError::UnterminatedCStyleComment(_) => None,
             ParseError::UnterminatedQuotedString(_) => None,
+            ParseError::UnterminatedEntity(_) => None,
             ParseError::InvalidEscapeSequence(_) => None,
+            ParseError::UnexpectedToken(e) => Some(e),
         }
     }
 }
@@ -131,7 +204,16 @@ impl From<io::Error> for QEntitiesParseError {
     #[inline]
     fn from(value: io::Error) -> Self {
         Self {
-            repr: Box::new(ParseError::Io(value)),
+            repr: Box::new(ParseError::from(value)),
+        }
+    }
+}
+
+impl From<QEntitiesUnexpectedTokenError> for QEntitiesParseError {
+    #[inline]
+    fn from(value: QEntitiesUnexpectedTokenError) -> Self {
+        Self {
+            repr: Box::new(ParseError::from(value)),
         }
     }
 }
@@ -140,7 +222,7 @@ impl From<io::Error> for QEntitiesParseError {
 /// type.
 #[derive(Debug)]
 pub struct QEntitiesParseErrorCastError {
-    /// Sealant to prevent user's from constructing this type.
+    /// Sealant to prevent users from constructing this type.
     _sealed: (),
 }
 
@@ -191,6 +273,32 @@ impl<'a> TryFrom<&'a QEntitiesParseError> for &'a io::Error {
     }
 }
 
+impl TryFrom<QEntitiesParseError> for QEntitiesUnexpectedTokenError {
+    type Error = QEntitiesParseErrorCastError;
+
+    #[inline]
+    fn try_from(value: QEntitiesParseError) -> Result<Self, Self::Error> {
+        if let ParseError::UnexpectedToken(e) = *value.repr {
+            Ok(e)
+        } else {
+            Err(QEntitiesParseErrorCastError::new())
+        }
+    }
+}
+
+impl<'a> TryFrom<&'a QEntitiesParseError> for &'a QEntitiesUnexpectedTokenError {
+    type Error = QEntitiesParseErrorCastError;
+
+    #[inline]
+    fn try_from(value: &'a QEntitiesParseError) -> Result<Self, Self::Error> {
+        if let ParseError::UnexpectedToken(e) = value.repr.as_ref() {
+            Ok(e)
+        } else {
+            Err(QEntitiesParseErrorCastError::new())
+        }
+    }
+}
+
 bitflags! {
     /// Bit-flags describing the options for parsing a q-entities file.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -199,13 +307,17 @@ bitflags! {
         const CPP_STYLE_COMMENTS = 0x01;
         /// Whether or not C style comments are enabled.
         const C_STYLE_COMMENTS = 0x02;
+        /// Whether or not control bytes can terminate unquoted strings.
+        const CONTROLS_TERMINATE_UNQUOTED_STRINGS = 0x04;
+        /// Whether or not comments can terminate unquoted strings.
+        const COMMENTS_TERMINATE_UNQUOTED_STRINGS = 0x08;
         /// Whether or not escape sequences are enabled.
-        const ESCAPE = 0x04;
+        const ESCAPE = 0x10;
         /// Whether or not double quotes can be escaped.
-        const ESCAPE_DOUBLE_QUOTES = 0x08;
+        const ESCAPE_DOUBLE_QUOTES = 0x20;
 
         /// Flags that are controlled by [`QEntitiesParseEscapeOptions`].
-        const ESCAPE_OPTIONS_MASK = Self::ESCAPE_DOUBLE_QUOTES.bits();
+        const ESCAPE_OPTIONS = Self::ESCAPE.bits() | Self::ESCAPE_DOUBLE_QUOTES.bits();
     }
 }
 
@@ -223,7 +335,7 @@ impl QEntitiesParseEscapeOptions {
     #[inline]
     pub fn new() -> Self {
         Self {
-            flags: !QEntitiesParseFlags::ESCAPE_OPTIONS_MASK,
+            flags: QEntitiesParseFlags::ESCAPE,
         }
     }
 
@@ -244,15 +356,6 @@ impl Default for QEntitiesParseEscapeOptions {
 }
 
 /// Options that describe the how a q-entities file is parsed.
-///
-/// Due to the q-entities format lacking any formal specification, there exist no default options
-/// for parsing a q-entities file. Because of this, when the user initially needs to create an
-/// options instance they must use one of the following title specific functions:
-/// * [`quake()`](Self::quake)
-/// * [`quake2()`](Self::quake2)
-/// * [`quake3()`](Self::quake3)
-/// * [`source_engine()`](Self::source_engine)
-/// * [`vtmb()`](Self::vtmb)
 #[derive(Clone)]
 pub struct QEntitiesParseOptions {
     /// Bit-flag options.
@@ -260,6 +363,15 @@ pub struct QEntitiesParseOptions {
 }
 
 impl QEntitiesParseOptions {
+    /// Creates a new parse options instance with the only options enabled being those that satisfy
+    /// the baseline grammar for a q-entities file.
+    #[inline]
+    pub fn new() -> Self {
+        Self {
+            flags: QEntitiesParseFlags::empty(),
+        }
+    }
+
     /// Creates a new parse options instance suitable for parsing q-entities found in _Quake_.
     ///
     /// This enables the following options:
@@ -273,7 +385,7 @@ impl QEntitiesParseOptions {
 
     /// Creates a new parse options instance suitable for parsing q-entities found in _Quake II_.
     ///
-    /// This enables the following options:
+    /// This enables the following additional options:
     /// * C++ style comments
     #[inline(always)]
     pub fn quake2() -> Self {
@@ -283,7 +395,7 @@ impl QEntitiesParseOptions {
     /// Creates a new parse options instance suitable for parsing q-entities found in _Quake III:
     /// Arena_.
     ///
-    /// This enables the following options:
+    /// This enables the following additional options:
     /// * C++ style comments
     /// * C style comments
     #[inline]
@@ -293,27 +405,33 @@ impl QEntitiesParseOptions {
         }
     }
 
-    /// Creates a new parse options instance suitable for parsing q-entities found in the _Source
-    /// Engine_.
+    /// Creates a new parse options instance suitable for parsing q-entities found in most _Source
+    /// Engine_ titles.
     ///
-    /// This enables the following options:
+    /// This enables the following additional options:
     /// * C++ style comments
+    /// * Controls terminate unquoted strings
     #[inline(always)]
     pub fn source_engine() -> Self {
-        Self::quake()
+        Self {
+            flags: QEntitiesParseFlags::CPP_STYLE_COMMENTS
+                | QEntitiesParseFlags::CONTROLS_TERMINATE_UNQUOTED_STRINGS,
+        }
     }
 
     /// Creates a new parse options instance suitable for parsing q-entities found in _Vampire The
     /// Masquerade: Bloodlines_.
     ///
-    /// This enables the following options:
+    /// This enables the following additional options:
     /// * C++ style comments
+    /// * Controls terminate unquoted strings
     /// * Escape sequences for
     ///   * Double-quotes
     #[inline]
     pub fn vtmb() -> Self {
         Self {
             flags: QEntitiesParseFlags::CPP_STYLE_COMMENTS
+                | QEntitiesParseFlags::CONTROLS_TERMINATE_UNQUOTED_STRINGS
                 | QEntitiesParseFlags::ESCAPE
                 | QEntitiesParseFlags::ESCAPE_DOUBLE_QUOTES,
         }
@@ -334,6 +452,26 @@ impl QEntitiesParseOptions {
         self
     }
 
+    /// Changes whether or control bytes terminate unquoted strings.
+    #[inline]
+    pub fn controls_terminate_unquoted_strings(&mut self, value: bool) -> &mut Self {
+        self.flags.set(
+            QEntitiesParseFlags::CONTROLS_TERMINATE_UNQUOTED_STRINGS,
+            value,
+        );
+        self
+    }
+
+    /// Changes whether or comments terminate unquoted strings.
+    #[inline]
+    pub fn comments_terminate_unquoted_strings(&mut self, value: bool) -> &mut Self {
+        self.flags.set(
+            QEntitiesParseFlags::COMMENTS_TERMINATE_UNQUOTED_STRINGS,
+            value,
+        );
+        self
+    }
+
     /// Changes the escape sequence options use when parsing quoted strings.
     ///
     /// A value of [`Some`] always implies that a back-slash can escape another back-slash (`\\`).
@@ -341,34 +479,51 @@ impl QEntitiesParseOptions {
     /// A value of [`None`] will disable escape sequences entirely.
     #[inline]
     pub fn escape_options(&mut self, value: Option<QEntitiesParseEscapeOptions>) -> &mut Self {
+        self.flags.remove(QEntitiesParseFlags::ESCAPE_OPTIONS);
         if let Some(escape_option_flags) = value.map(|value| value.flags) {
-            // The escape options are set by unioning the bit-flags carried by the options value.
-            // For this to be sound the carried escape flags must always have all other flags set.
-            debug_assert_eq!(
-                escape_option_flags & !QEntitiesParseFlags::ESCAPE_OPTIONS_MASK,
-                !QEntitiesParseFlags::ESCAPE_OPTIONS_MASK,
-            );
-
-            self.flags |= QEntitiesParseFlags::ESCAPE | escape_option_flags;
-        } else {
-            self.flags &= !QEntitiesParseFlags::ESCAPE;
+            debug_assert!(escape_option_flags.contains(QEntitiesParseFlags::ESCAPE));
+            debug_assert!(!escape_option_flags.contains(!QEntitiesParseFlags::ESCAPE_OPTIONS));
+            self.flags.insert(escape_option_flags);
         }
         self
+    }
+
+    /// Parse a reader as a q-entities file.
+    #[inline]
+    pub fn parse<R: io::Read>(&self, reader: R) -> Result<QEntities, QEntitiesParseError> {
+        self.parse_with_hasher(reader, DefaultHashBuilder::default())
+    }
+
+    /// Parse a reader as a q-entities file using the given hasher.
+    #[inline]
+    pub fn parse_with_hasher<R: io::Read, S: BuildHasher>(
+        &self,
+        reader: R,
+        hash_builder: S,
+    ) -> Result<QEntities, QEntitiesParseError> {
+        Parser::new(reader, self.clone()).parse(hash_builder)
+    }
+}
+
+impl Default for QEntitiesParseOptions {
+    #[inline(always)]
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 /// The kinds of tokens that can appear within a q-entities file.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum QEntitiesTokenKind {
     /// An open brace (`{`).
-    OpenBrace,
+    OpenBrace = b'{' as _,
     /// A close brace (`}`).
-    CloseBrace,
+    CloseBrace = b'}' as _,
     /// A quoted string (`"foo bar"`).
-    QuotedString,
+    QuotedString = b'"' as _,
     /// An unquoted string (`foo_bar`).
-    UnquotedString,
+    UnquotedString = 0,
 }
 
 impl fmt::Display for QEntitiesTokenKind {
@@ -410,6 +565,7 @@ impl fmt::Debug for PeekByte {
 
 impl PeekByte {
     /// Create a new empty peek-byte.
+    #[inline]
     pub fn new() -> Self {
         Self {
             state: PeekByteState::Spoiled,
@@ -512,6 +668,7 @@ struct Parser<R: io::Read> {
 
 impl<R: io::Read> Parser<R> {
     /// Create a new parser for a reader.
+    #[inline]
     fn new(reader: R, options: QEntitiesParseOptions) -> Self {
         Self {
             reader,
@@ -580,7 +737,7 @@ impl<R: io::Read> Parser<R> {
     /// Consumes bytes until the first new-line or EOF is encountered.
     fn skip_cpp_style_comment(&mut self) -> Result<(), QEntitiesParseError> {
         while let Some(byte) = self.next_byte()? {
-            if byte == b'\n' {
+            if matches!(byte, b'\n' | b'\r') {
                 break;
             }
         }
@@ -591,7 +748,7 @@ impl<R: io::Read> Parser<R> {
     ///
     /// If no `*/` pattern is encountered before the EOF then an error is returned.
     fn skip_c_style_comment(&mut self) -> Result<(), QEntitiesParseError> {
-        // Compute the start location so that it can be returned if termination pattern is
+        // Compute the start location so that it can be returned if no termination pattern is
         // encountered.
         let start_loc = QEntitiesParserLocation {
             offset: self.location.offset - 2,
@@ -605,6 +762,7 @@ impl<R: io::Read> Parser<R> {
                 return Ok(());
             }
         }
+
         Err(ParseError::UnterminatedCStyleComment(start_loc).into())
     }
 
@@ -613,11 +771,12 @@ impl<R: io::Read> Parser<R> {
     fn next_significant_byte(
         &mut self,
     ) -> Result<Option<(u8, QEntitiesParserLocation)>, QEntitiesParseError> {
-        while let Some(byte) = self.next_byte()? {
+        while let Some(byte) = self.peek_byte()? {
             let token_loc = self.location;
+            let _ = self.next_byte_fresh();
             match byte {
                 // Discard whitespace.
-                b' ' | b'\n' => (),
+                _ if byte.is_ascii_whitespace() => (),
 
                 // `/` may be part of a comment.
                 b'/' => match self.peek_byte()? {
@@ -646,12 +805,9 @@ impl<R: io::Read> Parser<R> {
         Ok(None)
     }
 
-    /// Reads bytes from the inner reader into given writer until a terminating `"` byte is
-    /// encountered and return the number of bytes written.
-    fn parse_quoted_string(
-        &mut self,
-        mut writer: impl io::Write,
-    ) -> Result<usize, QEntitiesParseError> {
+    /// Reads bytes from the inner reader into given buffer until a terminating `"` byte is
+    /// encountered.
+    fn parse_quoted_string(&mut self, buf: &mut Vec<u8>) -> Result<(), QEntitiesParseError> {
         // Compute the start location so that it can be returned if a termination quote is not
         // encountered.
         let start_loc = QEntitiesParserLocation {
@@ -660,29 +816,28 @@ impl<R: io::Read> Parser<R> {
             column: self.location.offset - 1,
         };
 
-        let mut written = 0;
         while let Some(byte) = self.next_byte()? {
             match byte {
                 // `"` terminates the string.
                 b'"' => {
-                    return Ok(written);
+                    return Ok(());
                 }
 
                 // `\` can be used to escape other bytes.
                 b'\\' if self.flags.contains(QEntitiesParseFlags::ESCAPE) => match self
                     .peek_byte()?
                 {
-                    Some(b'\\') => {
+                    Some(escape_byte @ b'\\') => {
                         let _ = self.next_byte_fresh();
-                        writer.write_all(slice::from_ref(&b'\\'))?;
+                        buf.push(escape_byte);
                     }
-                    Some(b'"')
+                    Some(escape_byte @ b'"')
                         if self
                             .flags
                             .contains(QEntitiesParseFlags::ESCAPE_DOUBLE_QUOTES) =>
                     {
                         let _ = self.next_byte_fresh();
-                        writer.write_all(slice::from_ref(&b'"'))?;
+                        buf.push(escape_byte);
                     }
                     _ => {
                         return Err(ParseError::InvalidEscapeSequence(QEntitiesParserLocation {
@@ -696,38 +851,46 @@ impl<R: io::Read> Parser<R> {
 
                 // All other bytes are part of the string.
                 _ => {
-                    writer.write_all(slice::from_ref(&byte))?;
-                    written += 1;
+                    buf.push(byte);
                 }
             }
         }
+
         Err(ParseError::UnterminatedQuotedString(start_loc).into())
     }
 
-    /// Reads bytes from the inner reader into given writer until some terminating whitespace or a
-    /// control byte is encountered and return the number of bytes written.
+    /// Reads bytes from the inner reader into given bufer until some terminating byte is
+    /// encountered.
     fn parse_unquoted_string(
         &mut self,
         head_byte: u8,
-        mut writer: impl io::Write,
-    ) -> Result<usize, QEntitiesParseError> {
-        writer.write_all(slice::from_ref(&head_byte))?;
-        let mut written = 1;
+        buf: &mut Vec<u8>,
+    ) -> Result<(), QEntitiesParseError> {
+        buf.push(head_byte);
 
         while let Some(byte) = self.peek_byte()? {
             match byte {
                 // Consume whitespace since it is not significant.
-                b' ' | b'\n' => {
+                _ if byte.is_ascii_whitespace() => {
                     let _ = self.next_byte_fresh();
                     break;
                 }
 
                 // Explicit control bytes just break so that they can be re-parsed.
-                b'{' | b'}' | b'"' => break,
+                b'{' | b'}' | b'"'
+                    if self
+                        .flags
+                        .contains(QEntitiesParseFlags::CONTROLS_TERMINATE_UNQUOTED_STRINGS) =>
+                {
+                    break;
+                }
 
                 // `/` is special because it can be a comment. If it is a comment then we'll consume
                 // the comment and break, but otherwise the `/` is part of the string.
-                b'/' => {
+                b'/' if self
+                    .flags
+                    .contains(QEntitiesParseFlags::COMMENTS_TERMINATE_UNQUOTED_STRINGS) =>
+                {
                     let _ = self.next_byte_fresh();
                     match self.peek_byte()? {
                         // `//` is a C++ style comment.
@@ -751,8 +914,7 @@ impl<R: io::Read> Parser<R> {
                         // All other patterns are not comments. Note that the second byte is not
                         // consumed because it may whitespace or a control byte.
                         _ => {
-                            writer.write_all(slice::from_ref(&byte))?;
-                            written += 1;
+                            buf.push(byte);
                         }
                     }
                 }
@@ -760,11 +922,136 @@ impl<R: io::Read> Parser<R> {
                 // All other bytes are part of the string.
                 _ => {
                     let _ = self.next_byte_fresh();
-                    writer.write_all(slice::from_ref(&byte))?;
-                    written += 1;
+                    buf.push(byte);
                 }
             }
         }
-        Ok(written)
+
+        Ok(())
+    }
+
+    fn parse<S: BuildHasher>(&mut self, hash_builder: S) -> Result<QEntities, QEntitiesParseError> {
+        /// State the parser can be in.
+        #[derive(Debug, Clone, Copy)]
+        enum ParseState {
+            /// The parser is searching for the next entity.
+            NextEntity,
+            /// The parser is searching for a key.
+            NextKey,
+            /// The parser is searching for a value.
+            NextValue,
+        }
+
+        // Location at which the last entity began. This is used to return an error if the EOF is
+        // reached while still parsing an entity.
+        let mut entity_start_loc = QEntitiesParserLocation {
+            offset: 0,
+            line: 0,
+            column: 0,
+        };
+
+        // Intermediates for constructing the `QEntities` instance.
+        let mut entities = Vec::new();
+        let mut key_values = Vec::new();
+        let mut byte_chunks = ByteChunksBuilder::with_hasher(hash_builder);
+        let mut key_chunk = 0;
+
+        // Scratch buffer which is used to store keys and values.
+        let mut scratch = Vec::new();
+
+        let mut state = ParseState::NextEntity;
+        while let Some((token_head_byte, token_location)) = self.next_significant_byte()? {
+            let token_kind = match token_head_byte {
+                b'{' => QEntitiesTokenKind::OpenBrace,
+                b'}' => QEntitiesTokenKind::CloseBrace,
+                b'"' => QEntitiesTokenKind::QuotedString,
+                _ => QEntitiesTokenKind::UnquotedString,
+            };
+
+            state = match state {
+                ParseState::NextEntity => match token_kind {
+                    QEntitiesTokenKind::OpenBrace => {
+                        entity_start_loc = token_location;
+                        entities.push(QEntityInfo {
+                            first_kv: key_values.len(),
+                            kvs_length: 0,
+                        });
+
+                        ParseState::NextKey
+                    }
+
+                    _ => {
+                        return Err(
+                            QEntitiesUnexpectedTokenError::new(token_kind, token_location).into(),
+                        )
+                    }
+                },
+
+                ParseState::NextKey => match token_kind {
+                    QEntitiesTokenKind::CloseBrace => ParseState::NextEntity,
+
+                    QEntitiesTokenKind::QuotedString => {
+                        scratch.clear();
+                        self.parse_quoted_string(&mut scratch)?;
+                        key_chunk = byte_chunks.chunk(&scratch);
+                        ParseState::NextValue
+                    }
+
+                    QEntitiesTokenKind::UnquotedString => {
+                        scratch.clear();
+                        self.parse_unquoted_string(token_head_byte, &mut scratch)?;
+                        key_chunk = byte_chunks.chunk(&scratch);
+                        ParseState::NextValue
+                    }
+
+                    _ => {
+                        return Err(
+                            QEntitiesUnexpectedTokenError::new(token_kind, token_location).into(),
+                        )
+                    }
+                },
+
+                ParseState::NextValue => {
+                    let value_chunk = match token_kind {
+                        QEntitiesTokenKind::QuotedString => {
+                            scratch.clear();
+                            self.parse_quoted_string(&mut scratch)?;
+                            byte_chunks.chunk(&scratch)
+                        }
+
+                        QEntitiesTokenKind::UnquotedString => {
+                            scratch.clear();
+                            self.parse_unquoted_string(token_head_byte, &mut scratch)?;
+                            byte_chunks.chunk(&scratch)
+                        }
+
+                        _ => {
+                            return Err(QEntitiesUnexpectedTokenError::new(
+                                token_kind,
+                                token_location,
+                            )
+                            .into())
+                        }
+                    };
+
+                    key_values.push(QEntityKeyValueInfo {
+                        key_chunk,
+                        value_chunk,
+                    });
+                    entities.last_mut().unwrap().kvs_length += 1;
+
+                    ParseState::NextKey
+                }
+            };
+        }
+
+        match state {
+            ParseState::NextEntity => Ok(QEntities {
+                entities: entities.into(),
+                key_values: key_values.into(),
+                byte_chunks: byte_chunks.into(),
+            }),
+            _ => Err(ParseError::UnterminatedEntity(entity_start_loc).into()),
+        }
     }
 }
