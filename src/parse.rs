@@ -596,22 +596,6 @@ impl PeekByte {
         }
     }
 
-    /// Assume that there exists a previously peeked byte that is still fresh and return it.
-    ///
-    /// This is intended to be used in scenarios where the user knows that there is a freshly peeked
-    /// byte, but the compiler may have a difficult time proving such.
-    ///
-    /// # Panics
-    /// In debug builds this function will panic if there does not actually exist a freshly peeked
-    /// byte, while in release builds this function will merely return an erroneous but initialized
-    /// result.
-    #[inline]
-    #[must_use]
-    pub fn peek_fresh(&self) -> u8 {
-        debug_assert!(matches!(self.state, PeekByteState::Fresh));
-        self.byte
-    }
-
     /// Attempt to take the inner byte and subsequently spoil it, or if the byte is already spoiled
     /// read the next from the given reader.
     pub fn take_from<R: io::Read>(&mut self, reader: &mut R) -> Result<Option<u8>, io::Error> {
@@ -686,13 +670,6 @@ impl<R: io::Read> Parser<R> {
     #[inline(always)]
     fn peek_byte(&mut self) -> Result<Option<u8>, io::Error> {
         self.peek_byte.peek_from(&mut self.reader)
-    }
-
-    /// Peek the next byte within the reader with the hint that any previously peeked byte is now
-    /// spoiled.
-    #[inline(always)]
-    fn peek_byte_spoiled(&mut self) -> Result<Option<u8>, io::Error> {
-        self.peek_byte.peek_from_spoiled(&mut self.reader)
     }
 
     /// Attempt to read the next byte.
