@@ -2,7 +2,6 @@
 
 #![warn(missing_docs)]
 
-mod build;
 mod byte_chunk;
 pub mod entities_iter;
 pub mod entity_kvs_iter;
