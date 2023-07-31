@@ -7,9 +7,8 @@
 //! within a single allocation whose memory footprint is optimized by de-duplicating byte-sequences
 //! that are already within the collection.
 
-use core::fmt;
 use core::hash::{BuildHasher, Hasher};
-use core::ops;
+use core::{fmt, ops};
 use hashbrown::hash_map::{HashMap, RawEntryMut};
 
 /// Information describing a chunk of bytes within a [`ByteChunks`] collection.

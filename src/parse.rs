@@ -14,11 +14,31 @@ use std::{error, io};
 #[derive(Debug, Clone, Copy)]
 pub struct QEntitiesParserLocation {
     /// Absolute offset from the beginning of the file.
-    pub offset: u64,
+    offset: u64,
     /// The line number within the file.
-    pub line: u64,
+    line: u64,
     /// The column number within the line.
-    pub column: u64,
+    column: u64,
+}
+
+impl QEntitiesParserLocation {
+    /// Gets the location's absolute offset from the beginning of the file.
+    #[inline]
+    pub fn offset(&self) -> u64 {
+        self.offset
+    }
+
+    /// Gets the location's line number within the file.
+    #[inline]
+    pub fn line(&self) -> u64 {
+        self.line
+    }
+
+    /// Gets the location's column number within the line.
+    #[inline]
+    pub fn column(&self) -> u64 {
+        self.column
+    }
 }
 
 impl std::fmt::Display for QEntitiesParserLocation {
@@ -106,7 +126,7 @@ pub struct QEntitiesParseError {
 }
 
 /// A discriminant for a kind of error that can occur during parsing of a q-entities file.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum QEntitiesParseErrorKind {
     /// An I/O error occured.
@@ -346,6 +366,13 @@ impl QEntitiesParseEscapeOptions {
             .set(QEntitiesParseFlags::ESCAPE_DOUBLE_QUOTES, value);
         self
     }
+
+    /// Same as [`double_quotes()`](Self::double_quotes) but takes `self` by value.
+    #[inline]
+    pub fn with_double_quotes(mut self, value: bool) -> Self {
+        self.double_quotes(value);
+        self
+    }
 }
 
 impl Default for QEntitiesParseEscapeOptions {
@@ -445,10 +472,24 @@ impl QEntitiesParseOptions {
         self
     }
 
+    /// Same as [`cpp_style_comments()`](Self::cpp_style_comments) but takes `self` by value.
+    #[inline]
+    pub fn with_cpp_style_comments(mut self, value: bool) -> Self {
+        self.cpp_style_comments(value);
+        self
+    }
+
     /// Changes whether or not C style multi-line comments are enabled.
     #[inline]
     pub fn c_style_comments(&mut self, value: bool) -> &mut Self {
         self.flags.set(QEntitiesParseFlags::C_STYLE_COMMENTS, value);
+        self
+    }
+
+    /// Same as [`c_style_comments()`](Self::c_style_comments) but takes `self` by value.
+    #[inline]
+    pub fn with_c_style_comments(mut self, value: bool) -> Self {
+        self.c_style_comments(value);
         self
     }
 
@@ -462,6 +503,14 @@ impl QEntitiesParseOptions {
         self
     }
 
+    /// Same as [`controls_terminate_unquoted_strings()`](Self::controls_terminate_unquoted_strings)
+    /// but takes `self` by value.
+    #[inline]
+    pub fn with_controls_terminate_unquoted_strings(mut self, value: bool) -> Self {
+        self.controls_terminate_unquoted_strings(value);
+        self
+    }
+
     /// Changes whether or comments terminate unquoted strings.
     #[inline]
     pub fn comments_terminate_unquoted_strings(&mut self, value: bool) -> &mut Self {
@@ -469,6 +518,14 @@ impl QEntitiesParseOptions {
             QEntitiesParseFlags::COMMENTS_TERMINATE_UNQUOTED_STRINGS,
             value,
         );
+        self
+    }
+
+    /// Same as [`comments_terminate_unquoted_strings()`](Self::comments_terminate_unquoted_strings)
+    /// but takes `self` by value.
+    #[inline]
+    pub fn with_comments_terminate_unquoted_strings(mut self, value: bool) -> Self {
+        self.comments_terminate_unquoted_strings(value);
         self
     }
 
@@ -485,6 +542,13 @@ impl QEntitiesParseOptions {
             debug_assert!(!escape_option_flags.contains(!QEntitiesParseFlags::ESCAPE_OPTIONS));
             self.flags.insert(escape_option_flags);
         }
+        self
+    }
+
+    /// Same as [`escape_options()`](Self::escape_options) but takes `self` by value.
+    #[inline]
+    pub fn with_escape_options(mut self, value: Option<QEntitiesParseEscapeOptions>) -> Self {
+        self.escape_options(value);
         self
     }
 
@@ -659,8 +723,8 @@ impl<R: io::Read> Parser<R> {
             peek_byte: PeekByte::new(),
             location: QEntitiesParserLocation {
                 offset: 0,
-                line: 0,
-                column: 0,
+                line: 1,
+                column: 1,
             },
             flags: options.flags,
         }
@@ -703,7 +767,7 @@ impl<R: io::Read> Parser<R> {
         match byte {
             b'\n' | b'\r' => {
                 self.location.line += 1;
-                self.location.column = 0;
+                self.location.column = 1;
             }
             _ => {
                 self.location.column += 1;
@@ -1029,6 +1093,253 @@ impl<R: io::Read> Parser<R> {
                 byte_chunks: byte_chunks.into(),
             }),
             _ => Err(ParseError::UnterminatedEntity(entity_start_loc).into()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unterminated_quoted_string() {
+        assert_eq!(
+            QEntitiesParseOptions::new()
+                .parse(&br#"{ "k" "v }"#[..])
+                .unwrap_err()
+                .kind(),
+            QEntitiesParseErrorKind::UnterminatedQuotedString,
+        );
+    }
+
+    #[test]
+    fn unterminated_c_style_comments() {
+        let parse_opts = QEntitiesParseOptions::new().with_c_style_comments(true);
+
+        let srcs = [
+            b"/*".as_slice(),
+            b"/**",
+            b"/***",
+            b"{\"k\"/*\"v\"}",
+            b"{\"k\" \"v\"}/*",
+            b"{ k /* v }",
+            b"{ k v }/*",
+        ];
+
+        for src in srcs.iter().copied() {
+            assert_eq!(
+                parse_opts.parse(&src[..]).unwrap_err().kind(),
+                QEntitiesParseErrorKind::UnterminatedCStyleComment,
+            );
+        }
+    }
+
+    #[test]
+    fn unterminated_entity() {
+        assert_eq!(
+            QEntitiesParseOptions::new()
+                .parse(&b"{"[..])
+                .unwrap_err()
+                .kind(),
+            QEntitiesParseErrorKind::UnterminatedEntity,
+        );
+    }
+
+    #[test]
+    fn nested_entity() {
+        let error = QEntitiesUnexpectedTokenError::try_from(
+            QEntitiesParseOptions::new()
+                .parse(&b"{ k v { k v } k v }"[..])
+                .unwrap_err(),
+        )
+        .unwrap();
+
+        assert_eq!(error.kind(), QEntitiesTokenKind::OpenBrace);
+    }
+
+    #[test]
+    fn exterior_kv() {
+        assert_eq!(
+            QEntitiesUnexpectedTokenError::try_from(
+                QEntitiesParseOptions::new()
+                    .parse(&b"\"k\" \"v\""[..])
+                    .unwrap_err(),
+            )
+            .unwrap()
+            .kind(),
+            QEntitiesTokenKind::QuotedString,
+        );
+
+        assert_eq!(
+            QEntitiesUnexpectedTokenError::try_from(
+                QEntitiesParseOptions::new().parse(&b"k v"[..]).unwrap_err(),
+            )
+            .unwrap()
+            .kind(),
+            QEntitiesTokenKind::UnquotedString,
+        );
+    }
+
+    #[test]
+    fn unpaired_close_brace() {
+        assert_eq!(
+            QEntitiesUnexpectedTokenError::try_from(
+                QEntitiesParseOptions::new().parse(&b"}"[..]).unwrap_err(),
+            )
+            .unwrap()
+            .kind(),
+            QEntitiesTokenKind::CloseBrace,
+        );
+    }
+
+    #[test]
+    fn comments() {
+        #[rustfmt::skip]
+        let data =
+br#"// first line
+{ k0 v0 //
+}{ k1 /*c*/ v1 }
+//c
+{ /* c */ k2 v2 }//c
+{ k3//c
+v3/**c**/}
+{ k4/**c**/ v4//
+}//"#;
+
+        let entities = QEntitiesParseOptions::new()
+            .cpp_style_comments(true)
+            .c_style_comments(true)
+            .comments_terminate_unquoted_strings(true)
+            .parse(&data[..])
+            .unwrap();
+
+        assert_eq!(entities.len(), 5);
+        for (index, entity) in entities.iter().enumerate() {
+            assert_eq!(entity.len(), 1);
+            let (key, value) = entity.get(0).map(|kv| (kv.key(), kv.value())).unwrap();
+            assert_eq!(key, format!("k{}", index).into_bytes());
+            assert_eq!(value, format!("v{}", index).into_bytes());
+        }
+    }
+
+    #[test]
+    fn vtmb_entities() {
+        #[rustfmt::skip]
+        let data =
+br#"// vtmb
+{
+"world_maxs" "4096 4096 4096"
+"world_mins" "-4096 -4096 -4096"
+"classname" "worldspawn"
+"skyname" "thesky"
+"sounds" "1"
+"MaxRange" "1337"
+"fogcolor" "255 255 255"
+"fogcolor2" "255 255 255"
+"fogdir" "0 1 0"
+"fogstart" "123.0"
+"fogend" "456.0"
+"wetness_fadetarget" "0.11"
+"wetness_fadein" "2.3"
+"wetness_fadeout" "5.4"
+"levelscript" "thescript"
+"safearea" "2"
+"nosferatu_tolerrant" "1"
+}
+{
+"classname" "logic_relay"
+"StartDisabled" "0"
+"targetname" "relay_a"
+"spawnflags" "1"
+"OnTrigger" ",,,0,-1,ScriptFn(\"arg_a\", \"arg_b\"),"
+"origin" "1 2 3"
+}
+{
+"classname" "logic_relay"
+"StartDisabled" "0"
+"targetname" "relay_b"
+"spawnflags" "1"
+"OnTrigger" ",,,0,-1,ScriptFn(\"a\", \"b\", \"c\"),"
+"origin" "4 5 6"
+}"#;
+
+        let expected_entities: &[&[(&[u8], &[u8])]] = &[
+            &[
+                (b"world_maxs", b"4096 4096 4096"),
+                (b"world_mins", b"-4096 -4096 -4096"),
+                (b"classname", b"worldspawn"),
+                (b"skyname", b"thesky"),
+                (b"sounds", b"1"),
+                (b"MaxRange", b"1337"),
+                (b"fogcolor", b"255 255 255"),
+                (b"fogcolor2", b"255 255 255"),
+                (b"fogdir", b"0 1 0"),
+                (b"fogstart", b"123.0"),
+                (b"fogend", b"456.0"),
+                (b"wetness_fadetarget", b"0.11"),
+                (b"wetness_fadein", b"2.3"),
+                (b"wetness_fadeout", b"5.4"),
+                (b"levelscript", b"thescript"),
+                (b"safearea", b"2"),
+                (b"nosferatu_tolerrant", b"1"),
+            ],
+            &[
+                (b"classname", b"logic_relay"),
+                (b"StartDisabled", b"0"),
+                (b"targetname", b"relay_a"),
+                (b"spawnflags", b"1"),
+                (b"OnTrigger", b",,,0,-1,ScriptFn(\"arg_a\", \"arg_b\"),"),
+                (b"origin", b"1 2 3"),
+            ],
+            &[
+                (b"classname", b"logic_relay"),
+                (b"StartDisabled", b"0"),
+                (b"targetname", b"relay_b"),
+                (b"spawnflags", b"1"),
+                (b"OnTrigger", b",,,0,-1,ScriptFn(\"a\", \"b\", \"c\"),"),
+                (b"origin", b"4 5 6"),
+            ],
+        ];
+
+        let entities = QEntitiesParseOptions::vtmb().parse(&data[..]).unwrap();
+        assert_eq!(
+            entities.len(),
+            expected_entities.len(),
+            "entities length mismatch",
+        );
+
+        for (entity_index, (entity, expected_entity)) in entities
+            .iter()
+            .zip(expected_entities.iter().copied())
+            .enumerate()
+        {
+            assert_eq!(
+                entity.len(),
+                expected_entity.len(),
+                "entity #{entity_index} length mismatch",
+            );
+
+            for (kv_index, ((k, v), (expected_k, expected_v))) in entity
+                .iter()
+                .map(|kv| (kv.key(), kv.value()))
+                .zip(expected_entity.iter().copied())
+                .enumerate()
+            {
+                assert_eq!(
+                    k,
+                    expected_k,
+                    "key #{kv_index} in entity #{entity_index} mismatch: {:?} != {:?}",
+                    String::from_utf8_lossy(k),
+                    String::from_utf8_lossy(expected_k),
+                );
+                assert_eq!(
+                    v,
+                    expected_v,
+                    "value #{kv_index} in entity #{entity_index} mismatch: {:?} != {:?}",
+                    String::from_utf8_lossy(v),
+                    String::from_utf8_lossy(expected_v),
+                );
+            }
         }
     }
 }

@@ -119,6 +119,18 @@ impl QEntities {
         |kv_info| self.kv_ref(kv_info)
     }
 
+    /// Gets the number of entities within the collection.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.entities.len()
+    }
+
+    /// Gets a [`QEntityRef`] by index.
+    #[inline]
+    pub fn get(&self, index: usize) -> Option<QEntityRef> {
+        self.entities.get(index).map(self.entity_ref_inator())
+    }
+
     /// Creates an iterator that yields [`QEntityRef`]s for the entities of the collection.
     #[inline]
     pub fn iter(&self) -> QEntitiesIter {
@@ -152,6 +164,21 @@ impl fmt::Debug for QEntityRef<'_> {
 }
 
 impl<'a> QEntityRef<'a> {
+    /// Gets the number of key-values that compose the entity.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.entity_info.kvs_length
+    }
+
+    /// Gets a [`QEntityKeyValueRef`] by index.
+    #[inline]
+    pub fn get(&self, index: usize) -> Option<QEntityKeyValueRef> {
+        self.entities
+            .key_values
+            .get(self.entity_info.first_kv + index)
+            .map(self.entities.kv_ref_inator())
+    }
+
     /// Creates an iterator that yields [`QEntityKeyValueRef`]s for the key-values of the entity.
     #[inline]
     pub fn iter(&self) -> QEntityKeyValuesIter<'a> {
@@ -183,7 +210,7 @@ impl fmt::Debug for QEntityKeyValueRef<'_> {
         use bstr::BStr;
         write!(
             f,
-            "({:?} {:?})",
+            "{:?}: {:?}",
             BStr::new(self.key()),
             BStr::new(self.value()),
         )
@@ -191,13 +218,13 @@ impl fmt::Debug for QEntityKeyValueRef<'_> {
 }
 
 impl<'a> QEntityKeyValueRef<'a> {
-    /// Retrieves a reference to the bytes of the key.
+    /// Gets a reference to the bytes of the key.
     #[inline]
     pub fn key(&self) -> &'a [u8] {
         &self.entities.byte_chunks[self.kv_info.key_chunk]
     }
 
-    /// Retrieves a reference to the bytes of the value.
+    /// Gets a reference to the bytes of the value.
     #[inline]
     pub fn value(&self) -> &'a [u8] {
         &self.entities.byte_chunks[self.kv_info.value_chunk]
