@@ -4,7 +4,7 @@
 use super::{QEntities, QEntityInfo, QEntityRef};
 use core::slice;
 
-/// Iterator over the entities within a [`QEntities`] collection.
+/// Iterator over some entities within a [`QEntities`] collection.
 pub struct QEntitiesIter<'a> {
     /// The collection of q-entities being iterated.
     entities: &'a QEntities,
