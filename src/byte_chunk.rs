@@ -13,6 +13,7 @@ use hashbrown::hash_map::{HashMap, RawEntryMut};
 
 /// Information describing a chunk of bytes within a [`ByteChunks`] collection.
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "deepsize", derive(deepsize::DeepSizeOf))]
 struct ByteChunkInfo {
     /// Offset to the first byte of the chunk.
     offset: usize,
@@ -132,6 +133,7 @@ impl<S: Default> Default for ByteChunksBuilder<S> {
 }
 
 /// Collection of byte-chunks.
+#[cfg_attr(feature = "deepsize", derive(deepsize::DeepSizeOf))]
 pub(crate) struct ByteChunks {
     /// The full collection of bytes.
     bytes: Box<[u8]>,

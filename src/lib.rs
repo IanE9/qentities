@@ -14,6 +14,7 @@ use entity_kvs_iter::QEntityKeyValuesIter;
 
 /// Information describing an entity instance within a [`QEntities`] collection.
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "deepsize", derive(deepsize::DeepSizeOf))]
 struct QEntityInfo {
     /// Index of the entity's first key-value.
     first_kv: usize,
@@ -23,6 +24,7 @@ struct QEntityInfo {
 
 /// Information describing a key-value instance within a [`QEntities`] collection.
 #[derive(Debug, Clone, Copy)]
+#[cfg_attr(feature = "deepsize", derive(deepsize::DeepSizeOf))]
 struct QEntityKeyValueInfo {
     /// Index of the byte-chunk for the key.
     key_chunk: usize,
@@ -31,6 +33,7 @@ struct QEntityKeyValueInfo {
 }
 
 /// Collection of q-entities.
+#[cfg_attr(feature = "deepsize", derive(deepsize::DeepSizeOf))]
 pub struct QEntities {
     entities: Box<[QEntityInfo]>,
     key_values: Box<[QEntityKeyValueInfo]>,
