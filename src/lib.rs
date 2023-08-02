@@ -175,6 +175,10 @@ impl<'a> QEntityRef<'a> {
     /// Gets a [`QEntityKeyValueRef`] by index.
     #[inline]
     pub fn get(&self, index: usize) -> Option<QEntityKeyValueRef> {
+        if index > self.entity_info.kvs_length {
+            return None;
+        }
+
         self.entities
             .key_values
             .get(self.entity_info.first_kv + index)
