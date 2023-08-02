@@ -51,7 +51,7 @@ impl std::fmt::Display for QEntitiesParserLocation {
     }
 }
 
-/// An error describing an unexpected tokens within a q-entities file.
+/// An error describing an unexpected token within a q-entities file.
 #[derive(Debug)]
 pub struct QEntitiesUnexpectedTokenError {
     /// The unexpected token's kind.
@@ -360,6 +360,39 @@ impl QEntitiesParseEscapeOptions {
     }
 
     /// Changes whether or not double quotes (`"`) can be escaped.
+    ///
+    /// # Examples
+    /// Basic usage:
+    /// ```
+    /// use qentities::parse::{QEntitiesParseEscapeOptions, QEntitiesParseOptions};
+    ///
+    /// let src = br#"
+    /// {
+    /// classname worldspawn
+    /// script_fn "func(\"arg_a\", \"arg_b\")"
+    /// }"#;
+    ///
+    /// let mut escape_options = QEntitiesParseEscapeOptions::new();
+    /// escape_options.double_quotes(true);
+    ///
+    /// let entities = QEntitiesParseOptions::new()
+    ///     .escape_options(Some(escape_options))
+    ///     .parse(&src[..])
+    ///     .unwrap();
+    /// assert_eq!(entities.len(), 1);
+    ///
+    /// let entity = entities.get(0).unwrap();
+    /// assert_eq!(entity.len(), 2);
+    ///
+    /// let (key_a, value_a) = entity.get(0).map(|kv| (kv.key(), kv.value())).unwrap();
+    /// let (key_b, value_b) = entity.get(1).map(|kv| (kv.key(), kv.value())).unwrap();
+    ///
+    /// assert_eq!(key_a, b"classname");
+    /// assert_eq!(value_a, b"worldspawn");
+    ///
+    /// assert_eq!(key_b, b"script_fn");
+    /// assert_eq!(value_b, b"func(\"arg_a\", \"arg_b\")");
+    /// ```
     #[inline]
     pub fn double_quotes(&mut self, value: bool) -> &mut Self {
         self.flags
@@ -383,6 +416,24 @@ impl Default for QEntitiesParseEscapeOptions {
 }
 
 /// Options that describe the how a q-entities file is parsed.
+///
+/// # Title Specific Presets
+/// Several functions are provided that create an options instance suitable for parsing q-entities
+/// found in a specific title. Users should understand that the intended purpose of these functions
+/// does not extend beyond this goal and as such failure to support the q-entities of their
+/// respective titles is considered a bug.
+///
+/// The options enabled by these functions are documented for the convenience of the user, but
+/// **users should not depend on the options enabled by these functions remaining consistent between
+/// non-major releases**. This caveat, though somewhat burdening to users, is necessary to enable
+/// fixing bugs in these functions outside of major releases.
+///
+/// The following functions are subject to the aforementioned details:
+/// * [`quake()`](Self::quake)
+/// * [`quake2()`](Self::quake2)
+/// * [`quake3()`](Self::quake3)
+/// * [`source_engine()`](Self::source_engine)
+/// * [`vtmb()`](Self::vtmb)
 #[derive(Clone)]
 pub struct QEntitiesParseOptions {
     /// Bit-flag options.
@@ -399,9 +450,11 @@ impl QEntitiesParseOptions {
         }
     }
 
-    /// Creates a new parse options instance suitable for parsing q-entities found in _Quake_.
+    /// [Title Specific Preset](Self#title-specific-presets) for parsing q-entities found in
+    /// _Quake_.
     ///
-    /// This enables the following options:
+    /// # Current Release Options
+    /// This function enables the following options in the current release:
     /// * C++ style comments
     #[inline]
     pub fn quake() -> Self {
@@ -410,19 +463,22 @@ impl QEntitiesParseOptions {
         }
     }
 
-    /// Creates a new parse options instance suitable for parsing q-entities found in _Quake II_.
+    /// [Title Specific Preset](Self#title-specific-presets) for parsing q-entities found in
+    /// _Quake II_.
     ///
-    /// This enables the following additional options:
+    /// # Current Release Options
+    /// This function enables the following options in the current release:
     /// * C++ style comments
     #[inline(always)]
     pub fn quake2() -> Self {
         Self::quake()
     }
 
-    /// Creates a new parse options instance suitable for parsing q-entities found in _Quake III:
-    /// Arena_.
+    /// [Title Specific Preset](Self#title-specific-presets) for parsing q-entities found in
+    /// _Quake III: Arena_.
     ///
-    /// This enables the following additional options:
+    /// # Current Release Options
+    /// This function enables the following options in the current release:
     /// * C++ style comments
     /// * C style comments
     #[inline]
@@ -432,10 +488,11 @@ impl QEntitiesParseOptions {
         }
     }
 
-    /// Creates a new parse options instance suitable for parsing q-entities found in most _Source
-    /// Engine_ titles.
+    /// [Title Specific Preset](Self#title-specific-presets) for parsing q-entities found in most
+    /// _Source Engine_ titles.
     ///
-    /// This enables the following additional options:
+    /// # Current Release Options
+    /// This function enables the following options in the current release:
     /// * C++ style comments
     /// * Controls terminate unquoted strings
     #[inline(always)]
@@ -446,10 +503,11 @@ impl QEntitiesParseOptions {
         }
     }
 
-    /// Creates a new parse options instance suitable for parsing q-entities found in _Vampire The
-    /// Masquerade: Bloodlines_.
+    /// [Title Specific Preset](Self#title-specific-presets) for parsing q-entities found in
+    /// _Vampire The Masquerade: Bloodlines_.
     ///
-    /// This enables the following additional options:
+    /// # Current Release Options
+    /// This function enables the following options in the current release:
     /// * C++ style comments
     /// * Controls terminate unquoted strings
     /// * Escape sequences for
@@ -465,6 +523,30 @@ impl QEntitiesParseOptions {
     }
 
     /// Changes whether or not C++ style single-line comments are enabled.
+    ///
+    /// # Examples
+    /// Basic usage:
+    /// ```
+    /// use qentities::parse::QEntitiesParseOptions;
+    ///
+    /// let src = br#"
+    /// { // worldspawn
+    /// classname worldspawn
+    /// }"#;
+    ///
+    /// let entities = QEntitiesParseOptions::new()
+    ///     .cpp_style_comments(true)
+    ///     .parse(&src[..])
+    ///     .unwrap();
+    /// assert_eq!(entities.len(), 1);
+    ///
+    /// let entity = entities.get(0).unwrap();
+    /// assert_eq!(entity.len(), 1);
+    ///
+    /// let (key, value) = entity.get(0).map(|kv| (kv.key(), kv.value())).unwrap();
+    /// assert_eq!(key, b"classname");
+    /// assert_eq!(value, b"worldspawn");
+    /// ```
     #[inline]
     pub fn cpp_style_comments(&mut self, value: bool) -> &mut Self {
         self.flags
@@ -480,6 +562,34 @@ impl QEntitiesParseOptions {
     }
 
     /// Changes whether or not C style multi-line comments are enabled.
+    ///
+    /// # Examples
+    /// Basic usage:
+    /// ```
+    /// use qentities::parse::QEntitiesParseOptions;
+    ///
+    /// let src = br#"
+    /// /**
+    ///  * my cool entities
+    ///  */
+    ///
+    /// { /* worldspawn */
+    /// /* key */ classname /* value */ worldspawn
+    /// }"#;
+    ///
+    /// let entities = QEntitiesParseOptions::new()
+    ///     .c_style_comments(true)
+    ///     .parse(&src[..])
+    ///     .unwrap();
+    /// assert_eq!(entities.len(), 1);
+    ///
+    /// let entity = entities.get(0).unwrap();
+    /// assert_eq!(entity.len(), 1);
+    ///
+    /// let (key, value) = entity.get(0).map(|kv| (kv.key(), kv.value())).unwrap();
+    /// assert_eq!(key, b"classname");
+    /// assert_eq!(value, b"worldspawn");
+    /// ```
     #[inline]
     pub fn c_style_comments(&mut self, value: bool) -> &mut Self {
         self.flags.set(QEntitiesParseFlags::C_STYLE_COMMENTS, value);
@@ -494,6 +604,32 @@ impl QEntitiesParseOptions {
     }
 
     /// Changes whether or control bytes terminate unquoted strings.
+    ///
+    /// # Examples
+    /// Basic usage:
+    /// ```
+    /// use qentities::parse::QEntitiesParseOptions;
+    ///
+    /// let src = b"{classname\"worldspawn\"wad mywad.wad}";
+    ///
+    /// let entities = QEntitiesParseOptions::new()
+    ///     .controls_terminate_unquoted_strings(true)
+    ///     .parse(&src[..])
+    ///     .unwrap();
+    /// assert_eq!(entities.len(), 1);
+    ///
+    /// let entity = entities.get(0).unwrap();
+    /// assert_eq!(entity.len(), 2);
+    ///
+    /// let (key_a, value_a) = entity.get(0).map(|kv| (kv.key(), kv.value())).unwrap();
+    /// let (key_b, value_b) = entity.get(1).map(|kv| (kv.key(), kv.value())).unwrap();
+    ///
+    /// assert_eq!(key_a, b"classname");
+    /// assert_eq!(value_a, b"worldspawn");
+    ///
+    /// assert_eq!(key_b, b"wad");
+    /// assert_eq!(value_b, b"mywad.wad");
+    /// ```
     #[inline]
     pub fn controls_terminate_unquoted_strings(&mut self, value: bool) -> &mut Self {
         self.flags.set(
@@ -512,6 +648,29 @@ impl QEntitiesParseOptions {
     }
 
     /// Changes whether or comments terminate unquoted strings.
+    ///
+    /// # Examples
+    /// Basic usage:
+    /// ```
+    /// use qentities::parse::QEntitiesParseOptions;
+    ///
+    /// let src = b"{classname/**/worldspawn//\n}";
+    ///
+    /// let entities = QEntitiesParseOptions::new()
+    ///     .cpp_style_comments(true)
+    ///     .c_style_comments(true)
+    ///     .comments_terminate_unquoted_strings(true)
+    ///     .parse(&src[..])
+    ///     .unwrap();
+    /// assert_eq!(entities.len(), 1);
+    ///
+    /// let entity = entities.get(0).unwrap();
+    /// assert_eq!(entity.len(), 1);
+    ///
+    /// let (key, value) = entity.get(0).map(|kv| (kv.key(), kv.value())).unwrap();
+    /// assert_eq!(key, b"classname");
+    /// assert_eq!(value, b"worldspawn");
+    /// ```
     #[inline]
     pub fn comments_terminate_unquoted_strings(&mut self, value: bool) -> &mut Self {
         self.flags.set(
@@ -534,6 +693,36 @@ impl QEntitiesParseOptions {
     /// A value of [`Some`] always implies that a back-slash can escape another back-slash (`\\`).
     ///
     /// A value of [`None`] will disable escape sequences entirely.
+    ///
+    /// # Examples
+    /// Basic usage:
+    /// ```
+    /// use qentities::parse::{QEntitiesParseEscapeOptions, QEntitiesParseOptions};
+    ///
+    /// let src = br#"
+    /// {
+    /// classname worldspawn
+    /// wad "wads\\mywad.wad"
+    /// }"#;
+    ///
+    /// let entities = QEntitiesParseOptions::new()
+    ///     .escape_options(Some(QEntitiesParseEscapeOptions::new()))
+    ///     .parse(&src[..])
+    ///     .unwrap();
+    /// assert_eq!(entities.len(), 1);
+    ///
+    /// let entity = entities.get(0).unwrap();
+    /// assert_eq!(entity.len(), 2);
+    ///
+    /// let (key_a, value_a) = entity.get(0).map(|kv| (kv.key(), kv.value())).unwrap();
+    /// let (key_b, value_b) = entity.get(1).map(|kv| (kv.key(), kv.value())).unwrap();
+    ///
+    /// assert_eq!(key_a, b"classname");
+    /// assert_eq!(value_a, b"worldspawn");
+    ///
+    /// assert_eq!(key_b, b"wad");
+    /// assert_eq!(value_b, b"wads\\mywad.wad");
+    /// ```
     #[inline]
     pub fn escape_options(&mut self, value: Option<QEntitiesParseEscapeOptions>) -> &mut Self {
         self.flags.remove(QEntitiesParseFlags::ESCAPE_OPTIONS);
@@ -553,6 +742,22 @@ impl QEntitiesParseOptions {
     }
 
     /// Parse a reader as a q-entities file.
+    ///
+    /// # Examples
+    /// Basic usage:
+    /// ```
+    /// use qentities::parse::QEntitiesParseOptions;
+    ///
+    /// let entities = QEntitiesParseOptions::new().parse(&b"{ classname worldspawn }"[..]).unwrap();
+    /// assert_eq!(entities.len(), 1);
+    ///
+    /// let entity = entities.get(0).unwrap();
+    /// assert_eq!(entity.len(), 1);
+    ///
+    /// let (key, value) = entity.get(0).map(|kv| (kv.key(), kv.value())).unwrap();
+    /// assert_eq!(key, b"classname");
+    /// assert_eq!(value, b"worldspawn");
+    /// ```
     #[inline]
     pub fn parse<R: io::Read>(&self, reader: R) -> Result<QEntities, QEntitiesParseError> {
         self.parse_with_hasher(reader, DefaultHashBuilder::default())
