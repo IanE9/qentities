@@ -7,6 +7,7 @@ use core::fmt;
 use core::hash::BuildHasher;
 use core::slice;
 use hashbrown::hash_map::DefaultHashBuilder;
+use std::fmt::Write;
 
 use std::{error, io};
 
@@ -369,7 +370,7 @@ impl QEntitiesParseEscapeOptions {
     /// let src = br#"
     /// {
     /// classname worldspawn
-    /// script_fn "func(\"arg_a\", \"arg_b\")"
+    /// script_fn "func(\"arg a\", \"arg b\")"
     /// }"#;
     ///
     /// let mut escape_options = QEntitiesParseEscapeOptions::new();
@@ -391,7 +392,7 @@ impl QEntitiesParseEscapeOptions {
     /// assert_eq!(value_a, b"worldspawn");
     ///
     /// assert_eq!(key_b, b"script_fn");
-    /// assert_eq!(value_b, b"func(\"arg_a\", \"arg_b\")");
+    /// assert_eq!(value_b, b"func(\"arg a\", \"arg b\")");
     /// ```
     #[inline]
     pub fn double_quotes(&mut self, value: bool) -> &mut Self {
@@ -610,7 +611,7 @@ impl QEntitiesParseOptions {
     /// ```
     /// use qentities::parse::QEntitiesParseOptions;
     ///
-    /// let src = b"{classname\"worldspawn\"wad mywad.wad}";
+    /// let src = br#"{classname"worldspawn"wad mywad.wad}"#;
     ///
     /// let entities = QEntitiesParseOptions::new()
     ///     .controls_terminate_unquoted_strings(true)
@@ -798,10 +799,10 @@ pub enum QEntitiesTokenKind {
 impl fmt::Display for QEntitiesTokenKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::OpenBrace => write!(f, "{{"),
-            Self::CloseBrace => write!(f, "}}"),
-            Self::QuotedString => write!(f, "quoted string"),
-            Self::UnquotedString => write!(f, "unquoted string"),
+            Self::OpenBrace => f.write_char('{'),
+            Self::CloseBrace => f.write_char('}'),
+            Self::QuotedString => f.write_str("quoted string"),
+            Self::UnquotedString => f.write_str("unquoted string"),
         }
     }
 }
