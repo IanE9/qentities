@@ -1,4 +1,6 @@
 # q-entities
+[![Crates.io](https://img.shields.io/crates/v/qentities)](https://crates.io/crates/qentities) [![Crates.io](https://img.shields.io/crates/l/qentities)](https://choosealicense.com/licenses/mpl-2.0/) [![docs.rs](https://img.shields.io/docsrs/qentities)](https://docs.rs/qentities/)
+
 A Rust crate featuring utilities related to the q-entities format.
 
 ## The q-entities Format
