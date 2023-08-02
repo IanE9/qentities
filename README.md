@@ -1,7 +1,7 @@
 # q-entities
 A Rust crate featuring utilities related to the q-entities format.
 
-## What is the q-entities Format?
+## The q-entities Format
 The q-entities format is the unofficial name which this crate gives to the otherwise unnamed format found in id Software's Quake and its derivative titles.
 
 There exists no formal specification for this format and derivative titles have on occasion been known to modify how it is parsed which makes defining a complete specification that works under all titles unfeasible.
