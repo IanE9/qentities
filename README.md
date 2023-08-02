@@ -10,7 +10,7 @@ This crate attempts to solve this problem by defining a [baseline](https://githu
 ## Basic Usage
 The crate's top level module features types used to store and access a q-entities collection (most notably `QEntities`).
 
-The `parse` module contains types used to parse a q-entities file into a q-entities collection (most notably `QEntitiesParseOptions`).
+The `parse` module features types used to parse a q-entities file into a q-entities collection (most notably `QEntitiesParseOptions`).
 
 ### Minimal Example
 ```rust
