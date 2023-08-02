@@ -4,6 +4,7 @@ version = "0.1.0-alpha"
 edition = "2021"
 description = "Utilities related to the q-entities format."
 repository = "https://github.com/IanE9/qentities"
+license = "MPL-2.0"
 keywords = ["parser"]
 
 [dependencies.bitflags]
