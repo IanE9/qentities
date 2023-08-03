@@ -7,7 +7,6 @@ use core::fmt;
 use core::hash::BuildHasher;
 use core::slice;
 use hashbrown::hash_map::DefaultHashBuilder;
-use std::fmt::Write;
 
 use std::{error, io};
 
@@ -799,10 +798,10 @@ pub enum QEntitiesTokenKind {
 impl fmt::Display for QEntitiesTokenKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::OpenBrace => f.write_char('{'),
-            Self::CloseBrace => f.write_char('}'),
-            Self::QuotedString => f.write_str("quoted string"),
-            Self::UnquotedString => f.write_str("unquoted string"),
+            Self::OpenBrace => write!(f, "{{"),
+            Self::CloseBrace => write!(f, "}}"),
+            Self::QuotedString => write!(f, "quoted string"),
+            Self::UnquotedString => write!(f, "unquoted string"),
         }
     }
 }
