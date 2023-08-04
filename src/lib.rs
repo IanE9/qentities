@@ -133,6 +133,21 @@ impl QEntities {
         self.entities.get(index).map(self.entity_ref_inator())
     }
 
+    /// Gets a [`QEntityRef`] by index without performing bounds checking.
+    ///
+    /// For a safe alternative see [`get()`](Self::get).
+    ///
+    /// # Safety
+    /// The index that this function is called with must always be less than the value returned by
+    /// [`len()`](Self::len). Using any index that does not meet this requirement may result in
+    /// *[undefined behavior]*.
+    ///
+    /// [undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html
+    #[inline]
+    pub unsafe fn get_unchecked(&self, index: usize) -> QEntityRef {
+        self.entity_ref(self.entities.get_unchecked(index))
+    }
+
     /// Creates an iterator that yields [`QEntityRef`]s for the entities of the collection.
     #[inline]
     pub fn iter(&self) -> QEntitiesIter {
@@ -179,6 +194,25 @@ impl<'a> QEntityRef<'a> {
             self.entities
                 .kv_ref(&self.entities.key_values[self.entity_info.first_kv + index])
         })
+    }
+
+    /// Gets a [`QEntityKeyValueRef`] by index without performing bounds checking.
+    ///
+    /// For a safe alternative see [`get()`](Self::get).
+    ///
+    /// # Safety
+    /// The index that this function is called with must always be less than the value returned by
+    /// [`len()`](Self::len). Using any index that does not meet this requirement may result in
+    /// *[undefined behavior]*.
+    ///
+    /// [undefined behavior]: https://doc.rust-lang.org/reference/behavior-considered-undefined.html
+    #[inline]
+    pub unsafe fn get_unchecked(&self, index: usize) -> QEntityKeyValueRef {
+        self.entities.kv_ref(
+            self.entities
+                .key_values
+                .get_unchecked(self.entity_info.first_kv + index),
+        )
     }
 
     /// Creates an iterator that yields [`QEntityKeyValueRef`]s for the key-values of the entity.

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `CHANGELOG.md`.
+- `QEntities::get_unchecked()`.
+- `QEntityRef::get_unchecked()`.
 
 ### Removed
 - Unnecessary `raw` feature dependency from `hashbrown`.
