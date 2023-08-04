@@ -1,6 +1,6 @@
 [package]
 name = "qentities"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 description = "Utilities related to the q-entities format."
 repository = "https://github.com/IanE9/qentities"
