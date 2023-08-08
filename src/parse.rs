@@ -1503,17 +1503,6 @@ mod tests {
     }
 
     #[test]
-    fn unterminated_quoted_string() {
-        assert_eq!(
-            QEntitiesParseOptions::new()
-                .parse(&br#"{ "k" "v }"#[..])
-                .unwrap_err()
-                .kind(),
-            QEntitiesParseErrorKind::UnterminatedQuotedString,
-        );
-    }
-
-    #[test]
     fn unterminated_c_style_comments() {
         fn expected_error(src: &[u8], location: QEntitiesParserLocation) -> ExpectedError {
             ExpectedError {
@@ -1587,6 +1576,55 @@ mod tests {
                     offset: 7,
                     line: 1,
                     column: 8,
+                },
+            ),
+        ]
+        .iter()
+        .for_each(|ee| ee.test(&parse_opts));
+    }
+
+    #[test]
+    fn unterminated_quoted_string() {
+        fn expected_error(src: &[u8], location: QEntitiesParserLocation) -> ExpectedError {
+            ExpectedError {
+                src,
+                kind: QEntitiesParseErrorKind::UnterminatedQuotedString,
+                location,
+            }
+        }
+
+        let parse_opts = QEntitiesParseOptions::new();
+        [
+            expected_error(
+                br#"{""#,
+                QEntitiesParserLocation {
+                    offset: 1,
+                    line: 1,
+                    column: 2,
+                },
+            ),
+            expected_error(
+                br#"{"key" ""#,
+                QEntitiesParserLocation {
+                    offset: 7,
+                    line: 1,
+                    column: 8,
+                },
+            ),
+            expected_error(
+                b"{k\n\"",
+                QEntitiesParserLocation {
+                    offset: 3,
+                    line: 2,
+                    column: 1,
+                },
+            ),
+            expected_error(
+                b"{k \"v}",
+                QEntitiesParserLocation {
+                    offset: 3,
+                    line: 1,
+                    column: 4,
                 },
             ),
         ]
