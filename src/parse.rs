@@ -796,9 +796,7 @@ impl QEntitiesParseOptions {
         self
     }
 
-    /// Changes the maximum allowed byte length of a parsed value.
-    ///
-    /// Using a value of [`None`] specifies that there should be no limit.
+    /// Same as [`max_value_length()`](Self::max_value_length) but takes `self` by value.
     #[inline]
     pub fn with_max_value_length(mut self, value: Option<usize>) -> Self {
         self.max_value_length(value);
