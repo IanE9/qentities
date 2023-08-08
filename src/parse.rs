@@ -103,6 +103,10 @@ enum ParseError {
     InvalidEscapeSequence(QEntitiesParserLocation),
     /// An unexpected token was encountered.
     UnexpectedToken(QEntitiesUnexpectedTokenError),
+    /// A key was too long.
+    KeyTooLong(QEntitiesParserLocation),
+    /// A value was too long,
+    ValueTooLong(QEntitiesParserLocation),
 }
 
 impl From<io::Error> for ParseError {
@@ -141,6 +145,10 @@ pub enum QEntitiesParseErrorKind {
     InvalidEscapeSequence,
     /// An unexpected token was encountered.
     UnexpectedToken,
+    /// A key was too long.
+    KeyTooLong,
+    /// A value was too long,
+    ValueTooLong,
 }
 
 impl QEntitiesParseError {
@@ -160,6 +168,8 @@ impl QEntitiesParseError {
                 QEntitiesParseErrorKind::InvalidEscapeSequence
             }
             ParseError::UnexpectedToken { .. } => QEntitiesParseErrorKind::UnexpectedToken,
+            ParseError::KeyTooLong { .. } => QEntitiesParseErrorKind::KeyTooLong,
+            ParseError::ValueTooLong { .. } => QEntitiesParseErrorKind::ValueTooLong,
         }
     }
 
@@ -173,6 +183,8 @@ impl QEntitiesParseError {
             ParseError::UnterminatedEntity(location) => Some(location),
             ParseError::InvalidEscapeSequence(location) => Some(location),
             ParseError::UnexpectedToken(e) => Some(&e.location),
+            ParseError::KeyTooLong(location) => Some(&location),
+            ParseError::ValueTooLong(location) => Some(&location),
         }
     }
 }
@@ -194,6 +206,12 @@ impl fmt::Display for QEntitiesParseError {
                 write!(f, "invalid escape sequence {location}")
             }
             ParseError::UnexpectedToken(e) => e.fmt(f),
+            ParseError::KeyTooLong(location) => {
+                write!(f, "key too long {location}")
+            }
+            ParseError::ValueTooLong(location) => {
+                write!(f, "key too long {location}")
+            }
         }
     }
 }
@@ -202,11 +220,13 @@ impl error::Error for QEntitiesParseError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self.repr.as_ref() {
             ParseError::Io(e) => Some(e),
-            ParseError::UnterminatedCStyleComment(_) => None,
-            ParseError::UnterminatedQuotedString(_) => None,
-            ParseError::UnterminatedEntity(_) => None,
-            ParseError::InvalidEscapeSequence(_) => None,
+            ParseError::UnterminatedCStyleComment { .. } => None,
+            ParseError::UnterminatedQuotedString { .. } => None,
+            ParseError::UnterminatedEntity { .. } => None,
+            ParseError::InvalidEscapeSequence { .. } => None,
             ParseError::UnexpectedToken(e) => Some(e),
+            ParseError::KeyTooLong { .. } => None,
+            ParseError::ValueTooLong { .. } => None,
         }
     }
 }
@@ -438,6 +458,10 @@ impl Default for QEntitiesParseEscapeOptions {
 pub struct QEntitiesParseOptions {
     /// Bit-flag options.
     flags: QEntitiesParseFlags,
+    /// The maximum length that a key is allowed to be.
+    max_key_length: usize,
+    /// The maximum length that a value is allowed to be.
+    max_value_length: usize,
 }
 
 impl QEntitiesParseOptions {
@@ -447,6 +471,8 @@ impl QEntitiesParseOptions {
     pub fn new() -> Self {
         Self {
             flags: QEntitiesParseFlags::empty(),
+            max_key_length: usize::MAX,
+            max_value_length: usize::MAX,
         }
     }
 
@@ -460,6 +486,7 @@ impl QEntitiesParseOptions {
     pub fn quake() -> Self {
         Self {
             flags: QEntitiesParseFlags::CPP_STYLE_COMMENTS,
+            ..Self::new()
         }
     }
 
@@ -485,6 +512,7 @@ impl QEntitiesParseOptions {
     pub fn quake3() -> Self {
         Self {
             flags: QEntitiesParseFlags::CPP_STYLE_COMMENTS | QEntitiesParseFlags::C_STYLE_COMMENTS,
+            ..Self::new()
         }
     }
 
@@ -500,6 +528,7 @@ impl QEntitiesParseOptions {
         Self {
             flags: QEntitiesParseFlags::CPP_STYLE_COMMENTS
                 | QEntitiesParseFlags::CONTROLS_TERMINATE_UNQUOTED_STRINGS,
+            ..Self::new()
         }
     }
 
@@ -519,6 +548,7 @@ impl QEntitiesParseOptions {
                 | QEntitiesParseFlags::CONTROLS_TERMINATE_UNQUOTED_STRINGS
                 | QEntitiesParseFlags::ESCAPE
                 | QEntitiesParseFlags::ESCAPE_DOUBLE_QUOTES,
+            ..Self::new()
         }
     }
 
@@ -741,6 +771,40 @@ impl QEntitiesParseOptions {
         self
     }
 
+    /// Changes the maximum allowed byte length of a parsed key.
+    ///
+    /// Using a value of [`None`] specifies that there should be no limit.
+    #[inline]
+    pub fn max_key_length(&mut self, value: Option<usize>) -> &mut Self {
+        self.max_key_length = value.unwrap_or(usize::MAX);
+        self
+    }
+
+    /// Same as [`max_key_length()`](Self::max_key_length) but takes `self` by value.
+    #[inline]
+    pub fn with_max_key_length(mut self, value: Option<usize>) -> Self {
+        self.max_key_length(value);
+        self
+    }
+
+    /// Changes the maximum allowed byte length of a parsed value.
+    ///
+    /// Using a value of [`None`] specifies that there should be no limit.
+    #[inline]
+    pub fn max_value_length(&mut self, value: Option<usize>) -> &mut Self {
+        self.max_value_length = value.unwrap_or(usize::MAX);
+        self
+    }
+
+    /// Changes the maximum allowed byte length of a parsed value.
+    ///
+    /// Using a value of [`None`] specifies that there should be no limit.
+    #[inline]
+    pub fn with_max_value_length(mut self, value: Option<usize>) -> Self {
+        self.max_value_length(value);
+        self
+    }
+
     /// Parse a reader as a q-entities file.
     ///
     /// # Examples
@@ -804,6 +868,15 @@ impl fmt::Display for QEntitiesTokenKind {
             Self::UnquotedString => write!(f, "unquoted string"),
         }
     }
+}
+
+/// The kinds of sources strings can be parsed from within a q-entities file.
+#[derive(Debug, Clone, Copy)]
+enum StringSourceKind {
+    /// The source is a key.
+    Key,
+    /// The source is a value.
+    Value,
 }
 
 /// State that a [`PeekByte`] can be in.
@@ -915,8 +988,8 @@ struct Parser<R: io::Read> {
     peek_byte: PeekByte,
     /// The parser's current location within the reader.
     location: QEntitiesParserLocation,
-    /// Flags used tor parsing.
-    flags: QEntitiesParseFlags,
+    /// options used for parsing.
+    options: QEntitiesParseOptions,
 }
 
 impl<R: io::Read> Parser<R> {
@@ -931,7 +1004,7 @@ impl<R: io::Read> Parser<R> {
                 line: 1,
                 column: 1,
             },
-            flags: options.flags,
+            options,
         }
     }
 
@@ -1027,13 +1100,23 @@ impl<R: io::Read> Parser<R> {
                 // `/` may be part of a comment.
                 b'/' => match self.peek_byte()? {
                     // `//` is a C++ style comment.
-                    Some(b'/') if self.flags.contains(QEntitiesParseFlags::CPP_STYLE_COMMENTS) => {
+                    Some(b'/')
+                        if self
+                            .options
+                            .flags
+                            .contains(QEntitiesParseFlags::CPP_STYLE_COMMENTS) =>
+                    {
                         let _ = self.next_byte_fresh();
                         self.skip_cpp_style_comment()?;
                     }
 
                     // `/*` is a C style comment.
-                    Some(b'*') if self.flags.contains(QEntitiesParseFlags::C_STYLE_COMMENTS) => {
+                    Some(b'*')
+                        if self
+                            .options
+                            .flags
+                            .contains(QEntitiesParseFlags::C_STYLE_COMMENTS) =>
+                    {
                         let _ = self.next_byte_fresh();
                         self.skip_c_style_comment()?;
                     }
@@ -1051,12 +1134,48 @@ impl<R: io::Read> Parser<R> {
         Ok(None)
     }
 
+    /// Gets the maximum length for a string's source kind.
+    fn string_source_max_length(&self, kind: StringSourceKind) -> usize {
+        match kind {
+            StringSourceKind::Key => self.options.max_key_length,
+            StringSourceKind::Value => self.options.max_value_length,
+        }
+    }
+
+    /// Helper to attempt pushing a byte to a buffer while additionally returning an error if doing
+    /// so would cause the buffer to exceeed a length limit.
+    fn push_string_buf(
+        kind: StringSourceKind,
+        buf: &mut Vec<u8>,
+        byte: u8,
+        max_length: usize,
+        start_location: QEntitiesParserLocation,
+    ) -> Result<(), QEntitiesParseError> {
+        if buf.len() < max_length {
+            buf.push(byte);
+            Ok(())
+        } else {
+            Err(match kind {
+                StringSourceKind::Key => ParseError::KeyTooLong(start_location),
+                StringSourceKind::Value => ParseError::ValueTooLong(start_location),
+            }
+            .into())
+        }
+    }
+
     /// Reads bytes from the inner reader into given buffer until a terminating `"` byte is
     /// encountered.
-    fn parse_quoted_string(&mut self, buf: &mut Vec<u8>) -> Result<(), QEntitiesParseError> {
-        // Compute the start location so that it can be returned if a termination quote is not
-        // encountered.
-        let start_loc = QEntitiesParserLocation {
+    fn parse_quoted_string(
+        &mut self,
+        source_kind: StringSourceKind,
+        buf: &mut Vec<u8>,
+    ) -> Result<(), QEntitiesParseError> {
+        buf.clear();
+
+        let max_length = self.string_source_max_length(source_kind);
+
+        // Compute the start location so that it can be returned if an error is encountered.
+        let start_location = QEntitiesParserLocation {
             offset: self.location.offset - 1,
             line: self.location.line,
             column: self.location.column - 1,
@@ -1070,20 +1189,33 @@ impl<R: io::Read> Parser<R> {
                 }
 
                 // `\` can be used to escape other bytes.
-                b'\\' if self.flags.contains(QEntitiesParseFlags::ESCAPE) => match self
+                b'\\' if self.options.flags.contains(QEntitiesParseFlags::ESCAPE) => match self
                     .peek_byte()?
                 {
                     Some(escape_byte @ b'\\') => {
                         let _ = self.next_byte_fresh();
-                        buf.push(escape_byte);
+                        Self::push_string_buf(
+                            source_kind,
+                            buf,
+                            escape_byte,
+                            max_length,
+                            start_location,
+                        )?;
                     }
                     Some(escape_byte @ b'"')
                         if self
+                            .options
                             .flags
                             .contains(QEntitiesParseFlags::ESCAPE_DOUBLE_QUOTES) =>
                     {
                         let _ = self.next_byte_fresh();
-                        buf.push(escape_byte);
+                        Self::push_string_buf(
+                            source_kind,
+                            buf,
+                            escape_byte,
+                            max_length,
+                            start_location,
+                        )?;
                     }
                     _ => {
                         return Err(ParseError::InvalidEscapeSequence(QEntitiesParserLocation {
@@ -1097,22 +1229,34 @@ impl<R: io::Read> Parser<R> {
 
                 // All other bytes are part of the string.
                 _ => {
-                    buf.push(byte);
+                    Self::push_string_buf(source_kind, buf, byte, max_length, start_location)?;
                 }
             }
         }
 
-        Err(ParseError::UnterminatedQuotedString(start_loc).into())
+        Err(ParseError::UnterminatedQuotedString(start_location).into())
     }
 
     /// Reads bytes from the inner reader into given bufer until some terminating byte is
     /// encountered.
     fn parse_unquoted_string(
         &mut self,
+        source_kind: StringSourceKind,
         head_byte: u8,
         buf: &mut Vec<u8>,
     ) -> Result<(), QEntitiesParseError> {
-        buf.push(head_byte);
+        buf.clear();
+
+        let max_length = self.string_source_max_length(source_kind);
+
+        // Compute the start location so that it can be returned if an error is encountered.
+        let start_location = QEntitiesParserLocation {
+            offset: self.location.offset - 1,
+            line: self.location.line,
+            column: self.location.column - 1,
+        };
+
+        Self::push_string_buf(source_kind, buf, head_byte, max_length, start_location)?;
 
         while let Some(byte) = self.peek_byte()? {
             match byte {
@@ -1125,6 +1269,7 @@ impl<R: io::Read> Parser<R> {
                 // Explicit control bytes just break so that they can be re-parsed.
                 b'{' | b'}' | b'"'
                     if self
+                        .options
                         .flags
                         .contains(QEntitiesParseFlags::CONTROLS_TERMINATE_UNQUOTED_STRINGS) =>
                 {
@@ -1134,6 +1279,7 @@ impl<R: io::Read> Parser<R> {
                 // `/` is special because it can be a comment. If it is a comment then we'll consume
                 // the comment and break, but otherwise the `/` is part of the string.
                 b'/' if self
+                    .options
                     .flags
                     .contains(QEntitiesParseFlags::COMMENTS_TERMINATE_UNQUOTED_STRINGS) =>
                 {
@@ -1141,7 +1287,10 @@ impl<R: io::Read> Parser<R> {
                     match self.peek_byte()? {
                         // `//` is a C++ style comment.
                         Some(b'/')
-                            if self.flags.contains(QEntitiesParseFlags::CPP_STYLE_COMMENTS) =>
+                            if self
+                                .options
+                                .flags
+                                .contains(QEntitiesParseFlags::CPP_STYLE_COMMENTS) =>
                         {
                             let _ = self.next_byte_fresh();
                             self.skip_cpp_style_comment()?;
@@ -1150,7 +1299,10 @@ impl<R: io::Read> Parser<R> {
 
                         // `/*` is a C style comment.
                         Some(b'*')
-                            if self.flags.contains(QEntitiesParseFlags::C_STYLE_COMMENTS) =>
+                            if self
+                                .options
+                                .flags
+                                .contains(QEntitiesParseFlags::C_STYLE_COMMENTS) =>
                         {
                             let _ = self.next_byte_fresh();
                             self.skip_c_style_comment()?;
@@ -1160,7 +1312,13 @@ impl<R: io::Read> Parser<R> {
                         // All other patterns are not comments. Note that the second byte is not
                         // consumed because it may whitespace or a control byte.
                         _ => {
-                            buf.push(byte);
+                            Self::push_string_buf(
+                                source_kind,
+                                buf,
+                                byte,
+                                max_length,
+                                start_location,
+                            )?;
                         }
                     }
                 }
@@ -1168,7 +1326,7 @@ impl<R: io::Read> Parser<R> {
                 // All other bytes are part of the string.
                 _ => {
                     let _ = self.next_byte_fresh();
-                    buf.push(byte);
+                    Self::push_string_buf(source_kind, buf, byte, max_length, start_location)?;
                 }
             }
         }
@@ -1237,15 +1395,17 @@ impl<R: io::Read> Parser<R> {
                     QEntitiesTokenKind::CloseBrace => ParseState::NextEntity,
 
                     QEntitiesTokenKind::QuotedString => {
-                        scratch.clear();
-                        self.parse_quoted_string(&mut scratch)?;
+                        self.parse_quoted_string(StringSourceKind::Key, &mut scratch)?;
                         key_chunk = byte_chunks.chunk(&scratch);
                         ParseState::NextValue
                     }
 
                     QEntitiesTokenKind::UnquotedString => {
-                        scratch.clear();
-                        self.parse_unquoted_string(token_head_byte, &mut scratch)?;
+                        self.parse_unquoted_string(
+                            StringSourceKind::Key,
+                            token_head_byte,
+                            &mut scratch,
+                        )?;
                         key_chunk = byte_chunks.chunk(&scratch);
                         ParseState::NextValue
                     }
@@ -1261,13 +1421,17 @@ impl<R: io::Read> Parser<R> {
                     let value_chunk = match token_kind {
                         QEntitiesTokenKind::QuotedString => {
                             scratch.clear();
-                            self.parse_quoted_string(&mut scratch)?;
+                            self.parse_quoted_string(StringSourceKind::Value, &mut scratch)?;
                             byte_chunks.chunk(&scratch)
                         }
 
                         QEntitiesTokenKind::UnquotedString => {
                             scratch.clear();
-                            self.parse_unquoted_string(token_head_byte, &mut scratch)?;
+                            self.parse_unquoted_string(
+                                StringSourceKind::Value,
+                                token_head_byte,
+                                &mut scratch,
+                            )?;
                             byte_chunks.chunk(&scratch)
                         }
 
