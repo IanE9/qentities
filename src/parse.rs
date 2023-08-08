@@ -1467,30 +1467,54 @@ impl<R: io::Read> Parser<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bstr::BStr;
+
+    /// Variant for an expected error in [`ExpectedError`].
+    #[derive(Clone, Copy)]
+    enum ExpectedErrorVariant {
+        SimpleKind(QEntitiesParseErrorKind),
+        UnexpectedToken(QEntitiesTokenKind),
+    }
 
     /// Helper for asserting that an error occured as expected.
     struct ExpectedError<'a> {
         src: &'a [u8],
-        kind: QEntitiesParseErrorKind,
+        kind: ExpectedErrorVariant,
         location: QEntitiesParserLocation,
     }
 
     impl ExpectedError<'_> {
         /// Asserts that the expected error occured while parsing with the given parse options.
         fn test(&self, parse_opts: &QEntitiesParseOptions) {
-            use bstr::BStr;
             match parse_opts.parse(&self.src[..]) {
                 Ok(_) => panic!(
                     "parsing of {:?} unexpectedly succeeded",
                     BStr::new(self.src),
                 ),
                 Err(e) => {
-                    assert_eq!(
-                        e.kind(),
-                        self.kind,
-                        "parsing of {:?} returned unexpected error kind",
-                        BStr::new(self.src),
-                    );
+                    match self.kind {
+                        ExpectedErrorVariant::SimpleKind(k) => assert_eq!(
+                            e.kind(),
+                            k,
+                            "parsing of {:?} returned unexpected error kind",
+                            BStr::new(self.src),
+                        ),
+                        ExpectedErrorVariant::UnexpectedToken(tk) => {
+                            assert_eq!(
+                                e.kind(),
+                                QEntitiesParseErrorKind::UnexpectedToken,
+                                "parsing of {:?} returned unexpected error kind",
+                                BStr::new(self.src),
+                            );
+                            let tke = <&QEntitiesUnexpectedTokenError>::try_from(&e).unwrap();
+                            assert_eq!(
+                                tke.kind(),
+                                tk,
+                                "parsing of {:?} returned unexpected token kind",
+                                BStr::new(self.src),
+                            );
+                        }
+                    };
                     assert_eq!(
                         e.location().expect("error kind must carry a location"),
                         &self.location,
@@ -1507,7 +1531,9 @@ mod tests {
         fn expected_error(src: &[u8], location: QEntitiesParserLocation) -> ExpectedError {
             ExpectedError {
                 src,
-                kind: QEntitiesParseErrorKind::UnterminatedCStyleComment,
+                kind: ExpectedErrorVariant::SimpleKind(
+                    QEntitiesParseErrorKind::UnterminatedCStyleComment,
+                ),
                 location,
             }
         }
@@ -1584,11 +1610,13 @@ mod tests {
     }
 
     #[test]
-    fn unterminated_quoted_string() {
+    fn unterminated_quoted_strings() {
         fn expected_error(src: &[u8], location: QEntitiesParserLocation) -> ExpectedError {
             ExpectedError {
                 src,
-                kind: QEntitiesParseErrorKind::UnterminatedQuotedString,
+                kind: ExpectedErrorVariant::SimpleKind(
+                    QEntitiesParseErrorKind::UnterminatedQuotedString,
+                ),
                 location,
             }
         }
@@ -1633,11 +1661,11 @@ mod tests {
     }
 
     #[test]
-    fn unterminated_entity() {
+    fn unterminated_entities() {
         fn expected_error(src: &[u8], location: QEntitiesParserLocation) -> ExpectedError {
             ExpectedError {
                 src,
-                kind: QEntitiesParseErrorKind::UnterminatedEntity,
+                kind: ExpectedErrorVariant::SimpleKind(QEntitiesParseErrorKind::UnterminatedEntity),
                 location,
             }
         }
@@ -1682,19 +1710,64 @@ mod tests {
     }
 
     #[test]
-    fn nested_entity() {
-        let error = QEntitiesUnexpectedTokenError::try_from(
-            QEntitiesParseOptions::new()
-                .parse(&b"{ k v { k v } k v }"[..])
-                .unwrap_err(),
-        )
-        .unwrap();
+    fn nested_entities() {
+        fn expected_error(src: &[u8], location: QEntitiesParserLocation) -> ExpectedError {
+            ExpectedError {
+                src,
+                kind: ExpectedErrorVariant::UnexpectedToken(QEntitiesTokenKind::OpenBrace),
+                location,
+            }
+        }
 
-        assert_eq!(error.kind(), QEntitiesTokenKind::OpenBrace);
+        let parse_opts = QEntitiesParseOptions::new();
+        [
+            expected_error(
+                b"{{",
+                QEntitiesParserLocation {
+                    offset: 1,
+                    line: 1,
+                    column: 2,
+                },
+            ),
+            expected_error(
+                b"\n{{",
+                QEntitiesParserLocation {
+                    offset: 2,
+                    line: 2,
+                    column: 2,
+                },
+            ),
+            expected_error(
+                b"{\n{",
+                QEntitiesParserLocation {
+                    offset: 2,
+                    line: 2,
+                    column: 1,
+                },
+            ),
+            expected_error(
+                b"\n{\n{",
+                QEntitiesParserLocation {
+                    offset: 3,
+                    line: 3,
+                    column: 1,
+                },
+            ),
+            expected_error(
+                b"{ k v { k v } k v }",
+                QEntitiesParserLocation {
+                    offset: 6,
+                    line: 1,
+                    column: 7,
+                },
+            ),
+        ]
+        .iter()
+        .for_each(|ee| ee.test(&parse_opts));
     }
 
     #[test]
-    fn exterior_kv() {
+    fn exterior_key_values() {
         assert_eq!(
             QEntitiesUnexpectedTokenError::try_from(
                 QEntitiesParseOptions::new()
