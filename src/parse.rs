@@ -109,6 +109,8 @@ enum ParseError {
     ValueTooLong(QEntitiesParserLocation),
     /// The file contained too many entities.
     TooManyEntities(QEntitiesParserLocation),
+    /// An entity had too many key-value pairs.
+    TooManyEntityKeyValues(QEntitiesParserLocation),
 }
 
 impl From<io::Error> for ParseError {
@@ -153,6 +155,8 @@ pub enum QEntitiesParseErrorKind {
     ValueTooLong,
     /// The file contained too many entities.
     TooManyEntities,
+    /// An entity had too many key-value pairs.
+    TooManyEntityKeyValues,
 }
 
 impl QEntitiesParseError {
@@ -175,6 +179,9 @@ impl QEntitiesParseError {
             ParseError::KeyTooLong { .. } => QEntitiesParseErrorKind::KeyTooLong,
             ParseError::ValueTooLong { .. } => QEntitiesParseErrorKind::ValueTooLong,
             ParseError::TooManyEntities { .. } => QEntitiesParseErrorKind::TooManyEntities,
+            ParseError::TooManyEntityKeyValues { .. } => {
+                QEntitiesParseErrorKind::TooManyEntityKeyValues
+            }
         }
     }
 
@@ -191,6 +198,7 @@ impl QEntitiesParseError {
             ParseError::KeyTooLong(location) => Some(&location),
             ParseError::ValueTooLong(location) => Some(&location),
             ParseError::TooManyEntities(location) => Some(&location),
+            ParseError::TooManyEntityKeyValues(location) => Some(&location),
         }
     }
 }
@@ -221,6 +229,9 @@ impl fmt::Display for QEntitiesParseError {
             ParseError::TooManyEntities(location) => {
                 write!(f, "too many entities {location}")
             }
+            ParseError::TooManyEntityKeyValues(location) => {
+                write!(f, "too many entity key-value pairs {location}")
+            }
         }
     }
 }
@@ -237,6 +248,7 @@ impl error::Error for QEntitiesParseError {
             ParseError::KeyTooLong { .. } => None,
             ParseError::ValueTooLong { .. } => None,
             ParseError::TooManyEntities { .. } => None,
+            ParseError::TooManyEntityKeyValues { .. } => None,
         }
     }
 }
@@ -474,6 +486,8 @@ pub struct QEntitiesParseOptions {
     max_value_length: usize,
     /// The maximum number of entities allowed.
     max_entities: usize,
+    /// The maximum number of key-value pairs an entity is allowed.
+    max_entity_kvs: usize,
 }
 
 impl QEntitiesParseOptions {
@@ -486,6 +500,7 @@ impl QEntitiesParseOptions {
             max_key_length: usize::MAX,
             max_value_length: usize::MAX,
             max_entities: usize::MAX,
+            max_entity_kvs: usize::MAX,
         }
     }
 
@@ -829,6 +844,22 @@ impl QEntitiesParseOptions {
     #[inline]
     pub fn with_max_entities(mut self, value: Option<usize>) -> Self {
         self.max_entities(value);
+        self
+    }
+
+    /// Changes the maximum allowed key-value pairs a parsed entity may have.
+    ///
+    /// Using a value of [`None`] specifies that there should be no limit.
+    #[inline]
+    pub fn max_entity_key_values(&mut self, value: Option<usize>) -> &mut Self {
+        self.max_entity_kvs = value.unwrap_or(usize::MAX);
+        self
+    }
+
+    /// Same as [`max_entity_key_values()`](Self::max_entity_key_values) but takes `self` by value.
+    #[inline]
+    pub fn with_max_entity_key_values(mut self, value: Option<usize>) -> Self {
+        self.max_entity_key_values(value);
         self
     }
 
@@ -1427,19 +1458,27 @@ impl<R: io::Read> Parser<R> {
                     QEntitiesTokenKind::CloseBrace => ParseState::NextEntity,
 
                     QEntitiesTokenKind::QuotedString => {
-                        self.parse_quoted_string(StringSourceKind::Key, &mut scratch)?;
-                        key_chunk = byte_chunks.chunk(&scratch);
-                        ParseState::NextValue
+                        if entities.last().unwrap().kvs_length < self.options.max_entity_kvs {
+                            self.parse_quoted_string(StringSourceKind::Key, &mut scratch)?;
+                            key_chunk = byte_chunks.chunk(&scratch);
+                            ParseState::NextValue
+                        } else {
+                            return Err(ParseError::TooManyEntityKeyValues(token_location).into());
+                        }
                     }
 
                     QEntitiesTokenKind::UnquotedString => {
-                        self.parse_unquoted_string(
-                            StringSourceKind::Key,
-                            token_head_byte,
-                            &mut scratch,
-                        )?;
-                        key_chunk = byte_chunks.chunk(&scratch);
-                        ParseState::NextValue
+                        if entities.last().unwrap().kvs_length < self.options.max_entity_kvs {
+                            self.parse_unquoted_string(
+                                StringSourceKind::Key,
+                                token_head_byte,
+                                &mut scratch,
+                            )?;
+                            key_chunk = byte_chunks.chunk(&scratch);
+                            ParseState::NextValue
+                        } else {
+                            return Err(ParseError::TooManyEntityKeyValues(token_location).into());
+                        }
                     }
 
                     _ => {
@@ -2056,6 +2095,57 @@ mod tests {
                 QEntitiesParserLocation {
                     offset: 12,
                     line: 5,
+                    column: 1,
+                },
+            ),
+        ]
+        .iter()
+        .for_each(|ee| ee.test(&parse_opts));
+    }
+
+    #[test]
+    fn too_many_entity_kvs() {
+        fn expected_error(src: &[u8], location: QEntitiesParserLocation) -> ExpectedError {
+            ExpectedError {
+                src,
+                kind: ExpectedErrorVariant::SimpleKind(
+                    QEntitiesParseErrorKind::TooManyEntityKeyValues,
+                ),
+                location,
+            }
+        }
+
+        let parse_opts = QEntitiesParseOptions::new().with_max_entity_key_values(Some(4));
+        [
+            expected_error(
+                b"{ k v k v k v k v k v }",
+                QEntitiesParserLocation {
+                    offset: 18,
+                    line: 1,
+                    column: 19,
+                },
+            ),
+            expected_error(
+                br#"{ k v k v k v k v "k" "v" }"#,
+                QEntitiesParserLocation {
+                    offset: 18,
+                    line: 1,
+                    column: 19,
+                },
+            ),
+            expected_error(
+                b"{ k v k v k v k v }{ k v k v k v k v k v }",
+                QEntitiesParserLocation {
+                    offset: 37,
+                    line: 1,
+                    column: 38,
+                },
+            ),
+            expected_error(
+                b"{\nk v\nk v\nk v\nk v\nk v\n}",
+                QEntitiesParserLocation {
+                    offset: 18,
+                    line: 6,
                     column: 1,
                 },
             ),
