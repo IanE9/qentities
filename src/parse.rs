@@ -107,6 +107,8 @@ enum ParseError {
     KeyTooLong(QEntitiesParserLocation),
     /// A value was too long,
     ValueTooLong(QEntitiesParserLocation),
+    /// The file contained too many entities.
+    TooManyEntities(QEntitiesParserLocation),
 }
 
 impl From<io::Error> for ParseError {
@@ -149,6 +151,8 @@ pub enum QEntitiesParseErrorKind {
     KeyTooLong,
     /// A value was too long,
     ValueTooLong,
+    /// The file contained too many entities.
+    TooManyEntities,
 }
 
 impl QEntitiesParseError {
@@ -170,6 +174,7 @@ impl QEntitiesParseError {
             ParseError::UnexpectedToken { .. } => QEntitiesParseErrorKind::UnexpectedToken,
             ParseError::KeyTooLong { .. } => QEntitiesParseErrorKind::KeyTooLong,
             ParseError::ValueTooLong { .. } => QEntitiesParseErrorKind::ValueTooLong,
+            ParseError::TooManyEntities { .. } => QEntitiesParseErrorKind::TooManyEntities,
         }
     }
 
@@ -185,6 +190,7 @@ impl QEntitiesParseError {
             ParseError::UnexpectedToken(e) => Some(&e.location),
             ParseError::KeyTooLong(location) => Some(&location),
             ParseError::ValueTooLong(location) => Some(&location),
+            ParseError::TooManyEntities(location) => Some(&location),
         }
     }
 }
@@ -212,6 +218,9 @@ impl fmt::Display for QEntitiesParseError {
             ParseError::ValueTooLong(location) => {
                 write!(f, "key too long {location}")
             }
+            ParseError::TooManyEntities(location) => {
+                write!(f, "too many entities {location}")
+            }
         }
     }
 }
@@ -227,6 +236,7 @@ impl error::Error for QEntitiesParseError {
             ParseError::UnexpectedToken(e) => Some(e),
             ParseError::KeyTooLong { .. } => None,
             ParseError::ValueTooLong { .. } => None,
+            ParseError::TooManyEntities { .. } => None,
         }
     }
 }
@@ -462,6 +472,8 @@ pub struct QEntitiesParseOptions {
     max_key_length: usize,
     /// The maximum length that a value is allowed to be.
     max_value_length: usize,
+    /// The maximum number of entities allowed.
+    max_entities: usize,
 }
 
 impl QEntitiesParseOptions {
@@ -473,6 +485,7 @@ impl QEntitiesParseOptions {
             flags: QEntitiesParseFlags::empty(),
             max_key_length: usize::MAX,
             max_value_length: usize::MAX,
+            max_entities: usize::MAX,
         }
     }
 
@@ -800,6 +813,22 @@ impl QEntitiesParseOptions {
     #[inline]
     pub fn with_max_value_length(mut self, value: Option<usize>) -> Self {
         self.max_value_length(value);
+        self
+    }
+
+    /// Changes the maximum allowed entities of a parsed file.
+    ///
+    /// Using a value of [`None`] specifies that there should be no limit.
+    #[inline]
+    pub fn max_entities(&mut self, value: Option<usize>) -> &mut Self {
+        self.max_entities = value.unwrap_or(usize::MAX);
+        self
+    }
+
+    /// Same as [`max_entities()`](Self::max_entities) but takes `self` by value.
+    #[inline]
+    pub fn with_max_entities(mut self, value: Option<usize>) -> Self {
+        self.max_entities(value);
         self
     }
 
@@ -1374,10 +1403,15 @@ impl<R: io::Read> Parser<R> {
                 ParseState::NextEntity => match token_kind {
                     QEntitiesTokenKind::OpenBrace => {
                         entity_start_loc = token_location;
-                        entities.push(QEntityInfo {
-                            first_kv: key_values.len(),
-                            kvs_length: 0,
-                        });
+
+                        if entities.len() < self.options.max_entities {
+                            entities.push(QEntityInfo {
+                                first_kv: key_values.len(),
+                                kvs_length: 0,
+                            });
+                        } else {
+                            return Err(ParseError::TooManyEntities(entity_start_loc).into());
+                        }
 
                         ParseState::NextKey
                     }
@@ -1981,6 +2015,47 @@ mod tests {
                 QEntitiesParserLocation {
                     offset: 7,
                     line: 3,
+                    column: 1,
+                },
+            ),
+        ]
+        .iter()
+        .for_each(|ee| ee.test(&parse_opts));
+    }
+
+    #[test]
+    fn too_many_entities() {
+        fn expected_error(src: &[u8], location: QEntitiesParserLocation) -> ExpectedError {
+            ExpectedError {
+                src,
+                kind: ExpectedErrorVariant::SimpleKind(QEntitiesParseErrorKind::TooManyEntities),
+                location,
+            }
+        }
+
+        let parse_opts = QEntitiesParseOptions::new().with_max_entities(Some(4));
+        [
+            expected_error(
+                b"{}{}{}{}{}",
+                QEntitiesParserLocation {
+                    offset: 8,
+                    line: 1,
+                    column: 9,
+                },
+            ),
+            expected_error(
+                b"{ k v }{ k v }{ k v }{ k v }{ k v }",
+                QEntitiesParserLocation {
+                    offset: 28,
+                    line: 1,
+                    column: 29,
+                },
+            ),
+            expected_error(
+                b"{}\n{}\n{}\n{}\n{}",
+                QEntitiesParserLocation {
+                    offset: 12,
+                    line: 5,
                     column: 1,
                 },
             ),

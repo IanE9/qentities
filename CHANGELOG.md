@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `QEntitiesParseOptions::max_key_length()` for limiting the maximum length of keys while parsing.
 - `QEntitiesParseOptions::max_value_length()` for limiting the maximum length of values while parsing.
+- `QEntitiesParseOptions::max_entities()` for limiting the maximum number of entities while parsing.
 - `PartialEq` and `Eq` trait implementations too `QEntitiesParserLocation`.
 
 ## [0.2.2] - 2023-08-08
