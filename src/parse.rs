@@ -1596,13 +1596,51 @@ mod tests {
 
     #[test]
     fn unterminated_entity() {
-        assert_eq!(
-            QEntitiesParseOptions::new()
-                .parse(&b"{"[..])
-                .unwrap_err()
-                .kind(),
-            QEntitiesParseErrorKind::UnterminatedEntity,
-        );
+        fn expected_error(src: &[u8], location: QEntitiesParserLocation) -> ExpectedError {
+            ExpectedError {
+                src,
+                kind: QEntitiesParseErrorKind::UnterminatedEntity,
+                location,
+            }
+        }
+
+        let parse_opts = QEntitiesParseOptions::new();
+        [
+            expected_error(
+                b"{",
+                QEntitiesParserLocation {
+                    offset: 0,
+                    line: 1,
+                    column: 1,
+                },
+            ),
+            expected_error(
+                b"\n{",
+                QEntitiesParserLocation {
+                    offset: 1,
+                    line: 2,
+                    column: 1,
+                },
+            ),
+            expected_error(
+                b"{ k v }{",
+                QEntitiesParserLocation {
+                    offset: 7,
+                    line: 1,
+                    column: 8,
+                },
+            ),
+            expected_error(
+                b"{ k v }\n{",
+                QEntitiesParserLocation {
+                    offset: 8,
+                    line: 2,
+                    column: 1,
+                },
+            ),
+        ]
+        .iter()
+        .for_each(|ee| ee.test(&parse_opts));
     }
 
     #[test]
