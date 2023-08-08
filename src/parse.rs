@@ -2165,7 +2165,7 @@ br#"// first line
 { /* c */ k2 v2 }//c
 { k3//c
 v3/**c**/}
-{ k4/**c**/ v4//
+{ k4/**c**/v4//
 }//"#;
 
         let entities = QEntitiesParseOptions::new()
