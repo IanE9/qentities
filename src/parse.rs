@@ -1710,6 +1710,50 @@ mod tests {
     }
 
     #[test]
+    fn invalid_escape_sequences() {
+        fn expected_error(src: &[u8], location: QEntitiesParserLocation) -> ExpectedError {
+            ExpectedError {
+                src,
+                kind: ExpectedErrorVariant::SimpleKind(
+                    QEntitiesParseErrorKind::InvalidEscapeSequence,
+                ),
+                location,
+            }
+        }
+
+        let parse_opts = QEntitiesParseOptions::new()
+            .with_escape_options(Some(QEntitiesParseEscapeOptions::new()));
+        [
+            expected_error(
+                br#"{"\x" "value"}"#,
+                QEntitiesParserLocation {
+                    offset: 2,
+                    line: 1,
+                    column: 3,
+                },
+            ),
+            expected_error(
+                b"{k\n\"\\x\"}",
+                QEntitiesParserLocation {
+                    offset: 4,
+                    line: 2,
+                    column: 2,
+                },
+            ),
+            expected_error(
+                b"{\"\\\x00\" \"\"}",
+                QEntitiesParserLocation {
+                    offset: 2,
+                    line: 1,
+                    column: 3,
+                },
+            ),
+        ]
+        .iter()
+        .for_each(|ee| ee.test(&parse_opts));
+    }
+
+    #[test]
     fn nested_entities() {
         fn expected_error(src: &[u8], location: QEntitiesParserLocation) -> ExpectedError {
             ExpectedError {
