@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+### Fixed
+- Incorrect location being reported for unterminated C style comments.
+
 ## [0.2.1] - 2023-08-07
 
 ### Fixed

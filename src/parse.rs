@@ -999,7 +999,7 @@ impl<R: io::Read> Parser<R> {
         let start_loc = QEntitiesParserLocation {
             offset: self.location.offset - 2,
             line: self.location.line,
-            column: self.location.offset - 2,
+            column: self.location.column - 2,
         };
 
         while let Some(byte) = self.next_byte()? {
