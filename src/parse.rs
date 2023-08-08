@@ -1754,88 +1754,6 @@ mod tests {
     }
 
     #[test]
-    fn overlong_keys() {
-        fn expected_error(src: &[u8], location: QEntitiesParserLocation) -> ExpectedError {
-            ExpectedError {
-                src,
-                kind: ExpectedErrorVariant::SimpleKind(QEntitiesParseErrorKind::KeyTooLong),
-                location,
-            }
-        }
-
-        let parse_opts = QEntitiesParseOptions::new().with_max_key_length(Some(4));
-        [
-            expected_error(
-                br#"{"12345" ""}"#,
-                QEntitiesParserLocation {
-                    offset: 1,
-                    line: 1,
-                    column: 2,
-                },
-            ),
-            expected_error(
-                br#"{"1234" "1234" "12345" "1234" }"#,
-                QEntitiesParserLocation {
-                    offset: 15,
-                    line: 1,
-                    column: 16,
-                },
-            ),
-            expected_error(
-                b"{\n12345 1234 }",
-                QEntitiesParserLocation {
-                    offset: 2,
-                    line: 2,
-                    column: 1,
-                },
-            ),
-        ]
-        .iter()
-        .for_each(|ee| ee.test(&parse_opts));
-    }
-
-    #[test]
-    fn overlong_values() {
-        fn expected_error(src: &[u8], location: QEntitiesParserLocation) -> ExpectedError {
-            ExpectedError {
-                src,
-                kind: ExpectedErrorVariant::SimpleKind(QEntitiesParseErrorKind::ValueTooLong),
-                location,
-            }
-        }
-
-        let parse_opts = QEntitiesParseOptions::new().with_max_value_length(Some(4));
-        [
-            expected_error(
-                br#"{"" "12345"}"#,
-                QEntitiesParserLocation {
-                    offset: 4,
-                    line: 1,
-                    column: 5,
-                },
-            ),
-            expected_error(
-                br#"{"1234" "1234" "1234" "12345" }"#,
-                QEntitiesParserLocation {
-                    offset: 22,
-                    line: 1,
-                    column: 23,
-                },
-            ),
-            expected_error(
-                b"{\n1234\n12345 }",
-                QEntitiesParserLocation {
-                    offset: 7,
-                    line: 3,
-                    column: 1,
-                },
-            ),
-        ]
-        .iter()
-        .for_each(|ee| ee.test(&parse_opts));
-    }
-
-    #[test]
     fn nested_entities() {
         fn expected_error(src: &[u8], location: QEntitiesParserLocation) -> ExpectedError {
             ExpectedError {
@@ -1981,6 +1899,88 @@ mod tests {
                 QEntitiesParserLocation {
                     offset: 8,
                     line: 2,
+                    column: 1,
+                },
+            ),
+        ]
+        .iter()
+        .for_each(|ee| ee.test(&parse_opts));
+    }
+
+    #[test]
+    fn overlong_keys() {
+        fn expected_error(src: &[u8], location: QEntitiesParserLocation) -> ExpectedError {
+            ExpectedError {
+                src,
+                kind: ExpectedErrorVariant::SimpleKind(QEntitiesParseErrorKind::KeyTooLong),
+                location,
+            }
+        }
+
+        let parse_opts = QEntitiesParseOptions::new().with_max_key_length(Some(4));
+        [
+            expected_error(
+                br#"{"12345" ""}"#,
+                QEntitiesParserLocation {
+                    offset: 1,
+                    line: 1,
+                    column: 2,
+                },
+            ),
+            expected_error(
+                br#"{"1234" "1234" "12345" "1234" }"#,
+                QEntitiesParserLocation {
+                    offset: 15,
+                    line: 1,
+                    column: 16,
+                },
+            ),
+            expected_error(
+                b"{\n12345 1234 }",
+                QEntitiesParserLocation {
+                    offset: 2,
+                    line: 2,
+                    column: 1,
+                },
+            ),
+        ]
+        .iter()
+        .for_each(|ee| ee.test(&parse_opts));
+    }
+
+    #[test]
+    fn overlong_values() {
+        fn expected_error(src: &[u8], location: QEntitiesParserLocation) -> ExpectedError {
+            ExpectedError {
+                src,
+                kind: ExpectedErrorVariant::SimpleKind(QEntitiesParseErrorKind::ValueTooLong),
+                location,
+            }
+        }
+
+        let parse_opts = QEntitiesParseOptions::new().with_max_value_length(Some(4));
+        [
+            expected_error(
+                br#"{"" "12345"}"#,
+                QEntitiesParserLocation {
+                    offset: 4,
+                    line: 1,
+                    column: 5,
+                },
+            ),
+            expected_error(
+                br#"{"1234" "1234" "1234" "12345" }"#,
+                QEntitiesParserLocation {
+                    offset: 22,
+                    line: 1,
+                    column: 23,
+                },
+            ),
+            expected_error(
+                b"{\n1234\n12345 }",
+                QEntitiesParserLocation {
+                    offset: 7,
+                    line: 3,
                     column: 1,
                 },
             ),
