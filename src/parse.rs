@@ -11,7 +11,7 @@ use hashbrown::hash_map::DefaultHashBuilder;
 use std::{error, io};
 
 /// Location within a q-entities file.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct QEntitiesParserLocation {
     /// Absolute offset from the beginning of the file.
     offset: u64,
@@ -1070,7 +1070,7 @@ impl<R: io::Read> Parser<R> {
         let start_loc = QEntitiesParserLocation {
             offset: self.location.offset - 2,
             line: self.location.line,
-            column: self.location.offset - 2,
+            column: self.location.column - 2,
         };
 
         while let Some(byte) = self.next_byte()? {
@@ -1468,6 +1468,40 @@ impl<R: io::Read> Parser<R> {
 mod tests {
     use super::*;
 
+    /// Helper for asserting that an error occured as expected.
+    struct ExpectedError<'a> {
+        src: &'a [u8],
+        kind: QEntitiesParseErrorKind,
+        location: QEntitiesParserLocation,
+    }
+
+    impl ExpectedError<'_> {
+        /// Asserts that the expected error occured while parsing with the given parse options.
+        fn test(&self, parse_opts: &QEntitiesParseOptions) {
+            use bstr::BStr;
+            match parse_opts.parse(&self.src[..]) {
+                Ok(_) => panic!(
+                    "parsing of {:?} unexpectedly succeeded",
+                    BStr::new(self.src),
+                ),
+                Err(e) => {
+                    assert_eq!(
+                        e.kind(),
+                        self.kind,
+                        "parsing of {:?} returned unexpected error kind",
+                        BStr::new(self.src),
+                    );
+                    assert_eq!(
+                        e.location().expect("error kind must carry a location"),
+                        &self.location,
+                        "parsing of {:?} returned unexpected error location",
+                        BStr::new(self.src),
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn unterminated_quoted_string() {
         assert_eq!(
@@ -1481,24 +1515,83 @@ mod tests {
 
     #[test]
     fn unterminated_c_style_comments() {
-        let parse_opts = QEntitiesParseOptions::new().with_c_style_comments(true);
-
-        let srcs = [
-            b"/*".as_slice(),
-            b"/**",
-            b"/***",
-            b"{\"k\"/*\"v\"}",
-            b"{\"k\" \"v\"}/*",
-            b"{ k /* v }",
-            b"{ k v }/*",
-        ];
-
-        for src in srcs.iter().copied() {
-            assert_eq!(
-                parse_opts.parse(&src[..]).unwrap_err().kind(),
-                QEntitiesParseErrorKind::UnterminatedCStyleComment,
-            );
+        fn expected_error(src: &[u8], location: QEntitiesParserLocation) -> ExpectedError {
+            ExpectedError {
+                src,
+                kind: QEntitiesParseErrorKind::UnterminatedCStyleComment,
+                location,
+            }
         }
+
+        let parse_opts = QEntitiesParseOptions::new().with_c_style_comments(true);
+        [
+            expected_error(
+                br#"/*"#,
+                QEntitiesParserLocation {
+                    offset: 0,
+                    line: 1,
+                    column: 1,
+                },
+            ),
+            expected_error(
+                b"\n/*",
+                QEntitiesParserLocation {
+                    offset: 1,
+                    line: 2,
+                    column: 1,
+                },
+            ),
+            expected_error(
+                br#"/**"#,
+                QEntitiesParserLocation {
+                    offset: 0,
+                    line: 1,
+                    column: 1,
+                },
+            ),
+            expected_error(
+                br#"/***"#,
+                QEntitiesParserLocation {
+                    offset: 0,
+                    line: 1,
+                    column: 1,
+                },
+            ),
+            expected_error(
+                br#"{"k"/*"v"}"#,
+                QEntitiesParserLocation {
+                    offset: 4,
+                    line: 1,
+                    column: 5,
+                },
+            ),
+            expected_error(
+                br#"{"k" "v"}/*"#,
+                QEntitiesParserLocation {
+                    offset: 9,
+                    line: 1,
+                    column: 10,
+                },
+            ),
+            expected_error(
+                br#"{ k /* v }"#,
+                QEntitiesParserLocation {
+                    offset: 4,
+                    line: 1,
+                    column: 5,
+                },
+            ),
+            expected_error(
+                br#"{ k v }/*"#,
+                QEntitiesParserLocation {
+                    offset: 7,
+                    line: 1,
+                    column: 8,
+                },
+            ),
+        ]
+        .iter()
+        .for_each(|ee| ee.test(&parse_opts));
     }
 
     #[test]
