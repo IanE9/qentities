@@ -2160,7 +2160,7 @@ mod tests {
         let data =
 br#"// first line
 { k0 v0 //
-}{ k1 /*c*/ v1 }
+}{ k1 /*c*/ v1 } /***/
 //c
 { /* c */ k2 v2 }//c
 { k3//c
