@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - `QEntitiesParseOptions::max_key_length()` for limiting the maximum length of keys while parsing.
 - `QEntitiesParseOptions::max_value_length()` for limiting the maximum length of values while parsing.
+- `PartialEq` and `Eq` trait implementations too `QEntitiesParserLocation`.
 
 ### Fixed
 - Incorrect location being reported for unterminated C style comments.
