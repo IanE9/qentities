@@ -1767,38 +1767,100 @@ mod tests {
     }
 
     #[test]
-    fn exterior_key_values() {
-        assert_eq!(
-            QEntitiesUnexpectedTokenError::try_from(
-                QEntitiesParseOptions::new()
-                    .parse(&b"\"k\" \"v\""[..])
-                    .unwrap_err(),
-            )
-            .unwrap()
-            .kind(),
-            QEntitiesTokenKind::QuotedString,
-        );
+    fn unpaired_close_braces() {
+        fn expected_error(src: &[u8], location: QEntitiesParserLocation) -> ExpectedError {
+            ExpectedError {
+                src,
+                kind: ExpectedErrorVariant::UnexpectedToken(QEntitiesTokenKind::CloseBrace),
+                location,
+            }
+        }
 
-        assert_eq!(
-            QEntitiesUnexpectedTokenError::try_from(
-                QEntitiesParseOptions::new().parse(&b"k v"[..]).unwrap_err(),
-            )
-            .unwrap()
-            .kind(),
-            QEntitiesTokenKind::UnquotedString,
-        );
+        let parse_opts = QEntitiesParseOptions::new();
+        [
+            expected_error(
+                b"}",
+                QEntitiesParserLocation {
+                    offset: 0,
+                    line: 1,
+                    column: 1,
+                },
+            ),
+            expected_error(
+                b"\n}",
+                QEntitiesParserLocation {
+                    offset: 1,
+                    line: 2,
+                    column: 1,
+                },
+            ),
+            expected_error(
+                b"{}}",
+                QEntitiesParserLocation {
+                    offset: 2,
+                    line: 1,
+                    column: 3,
+                },
+            ),
+            expected_error(
+                b"{ k v }}",
+                QEntitiesParserLocation {
+                    offset: 7,
+                    line: 1,
+                    column: 8,
+                },
+            ),
+        ]
+        .iter()
+        .for_each(|ee| ee.test(&parse_opts));
     }
 
     #[test]
-    fn unpaired_close_brace() {
-        assert_eq!(
-            QEntitiesUnexpectedTokenError::try_from(
-                QEntitiesParseOptions::new().parse(&b"}"[..]).unwrap_err(),
-            )
-            .unwrap()
-            .kind(),
-            QEntitiesTokenKind::CloseBrace,
-        );
+    fn exterior_key_values() {
+        fn expected_error(
+            kind: QEntitiesTokenKind,
+            src: &[u8],
+            location: QEntitiesParserLocation,
+        ) -> ExpectedError {
+            ExpectedError {
+                src,
+                kind: ExpectedErrorVariant::UnexpectedToken(kind),
+                location,
+            }
+        }
+
+        let parse_opts = QEntitiesParseOptions::new();
+        [
+            expected_error(
+                QEntitiesTokenKind::QuotedString,
+                b"\"k\" \"v\"",
+                QEntitiesParserLocation {
+                    offset: 0,
+                    line: 1,
+                    column: 1,
+                },
+            ),
+            expected_error(
+                QEntitiesTokenKind::UnquotedString,
+                b"k v",
+                QEntitiesParserLocation {
+                    offset: 0,
+                    line: 1,
+                    column: 1,
+                },
+            ),
+            expected_error(
+                QEntitiesTokenKind::QuotedString,
+                b"{ k v }\n\"k\" \"v\"",
+                QEntitiesParserLocation {
+                    offset: 8,
+                    line: 2,
+                    column: 1,
+                },
+            ),
+        ]
+        .iter()
+        .for_each(|ee| ee.test(&parse_opts));
     }
 
     #[test]
