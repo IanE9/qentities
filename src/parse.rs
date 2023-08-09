@@ -1491,13 +1491,11 @@ impl<R: io::Read> Parser<R> {
                 ParseState::NextValue => {
                     let value_chunk = match token_kind {
                         QEntitiesTokenKind::QuotedString => {
-                            scratch.clear();
                             self.parse_quoted_string(StringSourceKind::Value, &mut scratch)?;
                             byte_chunks.chunk(&scratch)
                         }
 
                         QEntitiesTokenKind::UnquotedString => {
-                            scratch.clear();
                             self.parse_unquoted_string(
                                 StringSourceKind::Value,
                                 token_head_byte,
